@@ -13,24 +13,32 @@ export interface IOutputLayoutCallbacks {
   onInteract?: () => void;
 }
 
+export interface IOutputCellOptions {
+  displayLabel: string;
+  callbacks?: IOutputLayoutCallbacks;
+}
+
 export class SummaryOutputCell extends Widget {
   private _outputLayout: IOutputLayout;
   private _items: ReadonlyArray<nbformat.IOutput>;
   private _dragCtl?: IDragController;
   private _resizeCtl?: IResizeController;
+  private _displayLabel: string;
 
   constructor(
     layout: IOutputLayout,
     items: ReadonlyArray<nbformat.IOutput>,
-    callbacks?: IOutputLayoutCallbacks
+    options: IOutputCellOptions
   ) {
     super();
     this._outputLayout = layout;
     this._items = items;
+    this._displayLabel = options.displayLabel;
     this.addClass('jp-CellLayout-output');
     this.addClass(`jp-CellLayout-output-${layout.output_id}`);
     this._applyLayout();
     this._render();
+    const callbacks = options.callbacks;
     if (callbacks) {
       this._dragCtl = enableDrag(
         this.node,
@@ -99,21 +107,30 @@ export class SummaryOutputCell extends Widget {
     const n = this.node;
     n.replaceChildren();
 
+    const label = document.createElement('div');
+    label.className = 'jp-CellLayout-label';
+    label.textContent = this._displayLabel;
+    n.appendChild(label);
+
+    const body = document.createElement('div');
+    body.className = 'jp-CellLayout-outputBody';
+    n.appendChild(body);
+
     if (this._items.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'jp-CellLayout-outputEmpty';
       empty.textContent = '(no output)';
-      n.appendChild(empty);
+      body.appendChild(empty);
       return;
     }
 
     for (const item of this._items) {
       const el =
         this._outputLayout.output_id === 'output_b'
-          ? renderGraphicsItem(item, this._outputLayout.max_image_width)
+          ? renderGraphicsItem(item)
           : renderTextItem(item);
       if (el) {
-        n.appendChild(el);
+        body.appendChild(el);
       }
     }
   }
@@ -160,10 +177,7 @@ function renderTextItem(item: nbformat.IOutput): HTMLElement | null {
   }
 }
 
-function renderGraphicsItem(
-  item: nbformat.IOutput,
-  maxWidthMm: number
-): HTMLElement | null {
+function renderGraphicsItem(item: nbformat.IOutput): HTMLElement | null {
   if (
     item.output_type !== 'display_data' &&
     item.output_type !== 'execute_result'
@@ -174,30 +188,25 @@ function renderGraphicsItem(
   if (!data) {
     return null;
   }
-  const maxWidthPx = `${mmToPx(maxWidthMm)}px`;
 
   if ('image/png' in data) {
     return imageElement(
-      'data:image/png;base64,' + coerceText(data['image/png']),
-      maxWidthPx
+      'data:image/png;base64,' + coerceText(data['image/png'])
     );
   }
   if ('image/jpeg' in data) {
     return imageElement(
-      'data:image/jpeg;base64,' + coerceText(data['image/jpeg']),
-      maxWidthPx
+      'data:image/jpeg;base64,' + coerceText(data['image/jpeg'])
     );
   }
   if ('image/gif' in data) {
     return imageElement(
-      'data:image/gif;base64,' + coerceText(data['image/gif']),
-      maxWidthPx
+      'data:image/gif;base64,' + coerceText(data['image/gif'])
     );
   }
   if ('image/svg+xml' in data) {
     const div = document.createElement('div');
     div.className = 'jp-CellLayout-svg';
-    div.style.maxWidth = maxWidthPx;
     div.innerHTML = coerceText(data['image/svg+xml']);
     return div;
   }
@@ -208,11 +217,9 @@ function renderGraphicsItem(
   return placeholder;
 }
 
-function imageElement(src: string, maxWidthPx: string): HTMLImageElement {
+function imageElement(src: string): HTMLImageElement {
   const img = document.createElement('img');
   img.className = 'jp-CellLayout-image';
   img.src = src;
-  img.style.maxWidth = maxWidthPx;
-  img.style.height = 'auto';
   return img;
 }

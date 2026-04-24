@@ -1,6 +1,6 @@
 # JupyterLab Cell Layout — Task List
 
-_Last updated: 2026-04-24_
+_Last updated: 2026-04-25_
 
 Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked
 
@@ -10,11 +10,12 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked
 - **Milestone 2a**: Draggable cells — ✅ done
 - **Milestone 2b**: Resizable cells — ✅ done
 - **Milestone 2c**: Grid snap + z-index — ✅ done
+- **Polish round 1**: Markdown rendering, image scaling, cell labels, overflow-clip code — ✅ done
 
 ## Phase status
 
 - **Phase 1** ✅ fully delivered
-- **Phase 2** ✅ fully delivered
+- **Phase 2** ✅ fully delivered (+ polish round 1)
 - **Phase 3** ⬜ available — PDF export, animations, performance, docs
 - **Phase 4** 🔒 blocked — grid templates, bulk ops, advanced keyboard
 
@@ -22,12 +23,13 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked
 
 **Phase 1:** #1, #2, #3, #4, #5, #6, #7, #8, #9, #10, #11, #12
 
-**Phase 2:**
-- **#13** Phase 2 rollup
-- **#16** Drag input and output cells with persistence
-- **#17** Resize cells with corner/edge handles
-- **#18** Z-index management for overlapping cells
-- **#19** Grid snapping on drag and resize
+**Phase 2:** #13, #16, #17, #18, #19
+
+**Polish round 1:**
+- **#20** Code inputs use overflow-clip (drop visible_lines truncation)
+- **#21** Output image aspect-ratio + slot-relative scaling
+- **#22** Cell labels — replace hex with notebook position + slot letter
+- **#23** Render markdown cells via IRenderMimeRegistry
 
 ## 🟢 In progress
 

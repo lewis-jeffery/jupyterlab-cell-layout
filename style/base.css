@@ -99,24 +99,43 @@
   cursor: ew-resize;
 }
 
-.jp-CellLayout-input {
+.jp-CellLayout-input-code {
   background: var(--jp-cell-editor-background, #f7f7f7);
 }
 
-.jp-CellLayout-inputHeader {
-  font-size: 9px;
-  color: var(--jp-ui-font-color2, #666);
-  background: var(--jp-layout-color2, #efefef);
-  border-bottom: 1px solid var(--jp-border-color3, #e0e0e0);
-  padding: 2px 6px;
-  font-family: var(--jp-ui-font-family, system-ui, sans-serif);
-  text-transform: lowercase;
-  letter-spacing: 0.02em;
+.jp-CellLayout-input-markdown,
+.jp-CellLayout-input-raw {
+  background: var(--jp-layout-color0, #fff);
 }
 
-.jp-CellLayout-inputBody {
-  margin: 0;
+.jp-CellLayout-label {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 60;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--jp-ui-font-color2, #555);
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--jp-border-color3, #ddd);
+  border-radius: 2px;
+  padding: 0 4px;
+  font-family: var(--jp-ui-font-family, system-ui, sans-serif);
+  pointer-events: none;
+}
+
+.jp-CellLayout-inputBody,
+.jp-CellLayout-outputBody {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
   padding: 4px 6px;
+  box-sizing: border-box;
+}
+
+.jp-CellLayout-inputCode {
+  margin: 0;
+  padding: 0;
   font-family: var(
     --jp-code-font-family,
     ui-monospace,
@@ -127,16 +146,46 @@
   );
   font-size: 10px;
   white-space: pre;
-  overflow: hidden;
   color: var(--jp-content-font-color1, #000);
 }
 
-.jp-CellLayout-output {
-  padding: 4px 6px;
-  background: var(--jp-layout-color0, #fff);
+.jp-CellLayout-md {
+  font-size: 11px;
+  line-height: 1.4;
 }
 
-.jp-CellLayout-output-output_a {
+.jp-CellLayout-md h1,
+.jp-CellLayout-md h2,
+.jp-CellLayout-md h3,
+.jp-CellLayout-md h4,
+.jp-CellLayout-md h5,
+.jp-CellLayout-md h6 {
+  margin: 0.4em 0 0.2em;
+}
+
+.jp-CellLayout-md h1 { font-size: 16px; }
+.jp-CellLayout-md h2 { font-size: 14px; }
+.jp-CellLayout-md h3 { font-size: 12px; }
+.jp-CellLayout-md p { margin: 0.3em 0; }
+.jp-CellLayout-md ul,
+.jp-CellLayout-md ol { margin: 0.3em 0; padding-left: 1.4em; }
+
+.jp-CellLayout-md a {
+  color: var(--jp-content-link-color, #2196f3);
+  text-decoration: underline;
+  pointer-events: auto;
+}
+
+.jp-CellLayout-md img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.jp-CellLayout-output-output_a .jp-CellLayout-outputBody {
   font-family: var(
     --jp-code-font-family,
     ui-monospace,
@@ -148,10 +197,10 @@
   font-size: 10px;
 }
 
-.jp-CellLayout-output-output_b {
+.jp-CellLayout-output-output_b .jp-CellLayout-outputBody {
   display: flex;
-  align-items: flex-start;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: center;
 }
 
 .jp-CellLayout-outputEmpty {
@@ -184,11 +233,27 @@
   overflow: hidden;
 }
 
-.jp-CellLayout-image,
+.jp-CellLayout-image {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
 .jp-CellLayout-svg {
   display: block;
+  max-width: 100%;
   max-height: 100%;
-  object-fit: contain;
+  overflow: hidden;
+}
+
+.jp-CellLayout-svg svg {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
 }
 
 .jp-CellLayout-placeholder {

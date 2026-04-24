@@ -1,3 +1,4 @@
+import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 
 import { CellCoordinator, pageBoundsFor } from '../managers/cell-coordinator';
@@ -19,7 +20,8 @@ export class LayoutCanvas extends Widget {
 
   constructor(
     private readonly coordinator: CellCoordinator,
-    private readonly manager: MetadataManager
+    private readonly manager: MetadataManager,
+    private readonly rendermime?: IRenderMimeRegistry
   ) {
     super();
     this.addClass('jp-CellLayout-root');
@@ -57,12 +59,12 @@ export class LayoutCanvas extends Widget {
         continue;
       }
       const cellId = entry.cellModel.id;
-      const widget = new SummaryCellWidget(
-        entry.cellModel,
-        entry.layout,
-        this.coordinator,
-        () => this.bringCellToFront(cellId)
-      );
+      const widget = new SummaryCellWidget(entry.cellModel, entry.layout, {
+        displayIndex: entry.index + 1,
+        coordinator: this.coordinator,
+        rendermime: this.rendermime,
+        onInteract: () => this.bringCellToFront(cellId)
+      });
       this._cells.push(widget);
       this._groups.set(cellId, widget);
       for (const w of widget.widgets()) {

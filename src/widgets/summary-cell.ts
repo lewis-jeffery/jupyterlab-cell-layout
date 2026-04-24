@@ -1,5 +1,6 @@
 import type { ICellModel, ICodeCellModel } from '@jupyterlab/cells';
 import type * as nbformat from '@jupyterlab/nbformat';
+import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import type { Widget } from '@lumino/widgets';
 
 import type { CellCoordinator } from '../managers/cell-coordinator';
@@ -8,6 +9,13 @@ import type { ICellLayout, OutputSlotId } from '../managers/metadata';
 
 import { SummaryInputCell } from './summary-input-cell';
 import { SummaryOutputCell } from './summary-output-cell';
+
+export interface ISummaryCellOptions {
+  displayIndex: number;
+  coordinator?: CellCoordinator;
+  rendermime?: IRenderMimeRegistry;
+  onInteract?: () => void;
+}
 
 /**
  * Logical wrapper around one notebook cell's summary-mode presentation.
@@ -23,12 +31,14 @@ export class SummaryCellWidget {
   constructor(
     cellModel: ICellModel,
     layout: ICellLayout,
-    coordinator?: CellCoordinator,
-    onInteract?: () => void
+    options: ISummaryCellOptions
   ) {
     this._zIndex = layout.input.z_index;
     this.cellId = cellModel.id;
     const id = this.cellId;
+    const { coordinator, rendermime, onInteract, displayIndex } = options;
+    const indexLabel = String(displayIndex);
+
     const getGridSnapMm = coordinator
       ? () => coordinator.gridSnapMm()
       : undefined;
@@ -44,7 +54,11 @@ export class SummaryCellWidget {
           onInteract
         }
       : undefined;
-    this.input = new SummaryInputCell(cellModel, layout.input, inputCallbacks);
+    this.input = new SummaryInputCell(cellModel, layout.input, {
+      displayLabel: indexLabel,
+      rendermime,
+      callbacks: inputCallbacks
+    });
     this.outputs = [];
 
     const routed = routeCellOutputs(cellModel);
@@ -54,6 +68,7 @@ export class SummaryCellWidget {
       }
       const items = selectRoutedItems(routed, outLayout.output_id);
       const slotId = outLayout.output_id;
+      const slotLetter = slotId === 'output_a' ? 'A' : 'B';
       const outputCallbacks = coordinator
         ? {
             onPositionChange: (pos: { x: number; y: number }) =>
@@ -71,7 +86,10 @@ export class SummaryCellWidget {
           }
         : undefined;
       this.outputs.push(
-        new SummaryOutputCell(outLayout, items, outputCallbacks)
+        new SummaryOutputCell(outLayout, items, {
+          displayLabel: `${indexLabel}${slotLetter}`,
+          callbacks: outputCallbacks
+        })
       );
     }
   }

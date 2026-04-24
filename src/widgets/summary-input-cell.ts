@@ -1,4 +1,5 @@
 import type { ICellModel } from '@jupyterlab/cells';
+import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 
 import type { IInputLayout, IPosition, ISize } from '../managers/metadata';
@@ -13,21 +14,33 @@ export interface IInputLayoutCallbacks {
   onInteract?: () => void;
 }
 
+export interface IInputCellOptions {
+  displayLabel: string;
+  rendermime?: IRenderMimeRegistry;
+  callbacks?: IInputLayoutCallbacks;
+}
+
 export class SummaryInputCell extends Widget {
   private _inputLayout: IInputLayout;
   private _dragCtl?: IDragController;
   private _resizeCtl?: IResizeController;
+  private _displayLabel: string;
+  private _rendermime?: IRenderMimeRegistry;
 
   constructor(
     private readonly cellModel: ICellModel,
     layout: IInputLayout,
-    callbacks?: IInputLayoutCallbacks
+    options: IInputCellOptions
   ) {
     super();
     this._inputLayout = layout;
+    this._displayLabel = options.displayLabel;
+    this._rendermime = options.rendermime;
     this.addClass('jp-CellLayout-input');
+    this.addClass(`jp-CellLayout-input-${cellModel.type}`);
     this._applyLayout();
-    this._render();
+    void this._render();
+    const callbacks = options.callbacks;
     if (callbacks) {
       this._dragCtl = enableDrag(
         this.node,
@@ -75,7 +88,7 @@ export class SummaryInputCell extends Widget {
   setLayout(next: IInputLayout): void {
     this._inputLayout = next;
     this._applyLayout();
-    this._render();
+    void this._render();
   }
 
   private _applyLayout(): void {
@@ -88,24 +101,53 @@ export class SummaryInputCell extends Widget {
     n.style.zIndex = String(this._inputLayout.z_index);
   }
 
-  private _render(): void {
+  private async _render(): Promise<void> {
     const n = this.node;
     n.replaceChildren();
 
-    const header = document.createElement('div');
-    header.className = 'jp-CellLayout-inputHeader';
-    const shortId = this.cellModel.id.slice(0, 8);
-    header.textContent = `${this.cellModel.type} · ${shortId}`;
-    n.appendChild(header);
+    const label = document.createElement('div');
+    label.className = 'jp-CellLayout-label';
+    label.textContent = this._displayLabel;
+    n.appendChild(label);
 
-    const body = document.createElement('pre');
+    const body = document.createElement('div');
     body.className = 'jp-CellLayout-inputBody';
-    const source = coerceText(this.cellModel.sharedModel.getSource());
-    const lines = source.split('\n');
-    const limit = this._inputLayout.visible_lines;
-    const shown = lines.slice(0, limit);
-    const truncated = lines.length > limit;
-    body.textContent = shown.join('\n') + (truncated ? '\n…' : '');
     n.appendChild(body);
+
+    const source = coerceText(this.cellModel.sharedModel.getSource());
+
+    if (this.cellModel.type === 'markdown' && this._rendermime) {
+      await this._renderMarkdown(body, source);
+    } else {
+      const pre = document.createElement('pre');
+      pre.className = 'jp-CellLayout-inputCode';
+      pre.textContent = source;
+      body.appendChild(pre);
+    }
+  }
+
+  private async _renderMarkdown(
+    body: HTMLElement,
+    source: string
+  ): Promise<void> {
+    if (!this._rendermime) {
+      return;
+    }
+    const trimmed = source.trim().length > 0 ? source : '_(empty)_';
+    const renderer = this._rendermime.createRenderer('text/markdown');
+    const model = this._rendermime.createModel({
+      data: { 'text/markdown': trimmed },
+      trusted: true
+    });
+    try {
+      await renderer.renderModel(model);
+      renderer.addClass('jp-CellLayout-md');
+      body.appendChild(renderer.node);
+    } catch (err) {
+      const fallback = document.createElement('pre');
+      fallback.textContent = source;
+      body.appendChild(fallback);
+      console.warn('jupyterlab-cell-layout: markdown render failed', err);
+    }
   }
 }

@@ -180,14 +180,20 @@ function seedDefaultsIfEmpty(panel: NotebookPanel, manager: MetadataManager): vo
 }
 
 function attachNotebook(panel: NotebookPanel): void {
-  panel.context.ready.then(() => {
-    if (!panel.model) {
-      return;
-    }
-    const manager = new MetadataManager(panel.model);
-    seedDefaultsIfEmpty(panel, manager);
-    const coordinator = new CellCoordinator(panel.model, manager);
-    const canvas = new LayoutCanvas(coordinator, manager);
+  panel.context.ready
+    .then(() => {
+      if (!panel.model) {
+        console.warn('jupyterlab-cell-layout: panel.model not available');
+        return;
+      }
+      const manager = new MetadataManager(panel.model);
+      seedDefaultsIfEmpty(panel, manager);
+      const coordinator = new CellCoordinator(panel.model, manager);
+      const canvas = new LayoutCanvas(
+        coordinator,
+        manager,
+        panel.content.rendermime
+      );
 
     const layout = panel.layout as BoxLayout;
     layout.addWidget(canvas);
@@ -221,14 +227,17 @@ function attachNotebook(panel: NotebookPanel): void {
 
     coordinator.changed.connect(() => reapplyCellExclusionClasses(panel));
 
-    panel.disposed.connect(() => {
-      coordinator.dispose();
-      canvas.dispose();
-      modeButton.dispose();
-      orientationButton.dispose();
-      state.delete(panel);
+      panel.disposed.connect(() => {
+        coordinator.dispose();
+        canvas.dispose();
+        modeButton.dispose();
+        orientationButton.dispose();
+        state.delete(panel);
+      });
+    })
+    .catch(err => {
+      console.error('jupyterlab-cell-layout: attachNotebook failed', err);
     });
-  });
 }
 
 function readUserDefaults(settings: ISettingRegistryType.ISettings): void {
