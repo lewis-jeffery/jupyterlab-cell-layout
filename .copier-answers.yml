@@ -1,0 +1,16 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: v4.5.2-2-g18dee2b
+_src_path: https://github.com/jupyterlab/extension-template
+author_email: lewis@jeffery.id.au
+author_name: Lewis Jeffery
+has_ai_rules: false
+has_binder: false
+has_settings: true
+kind: frontend
+labextension_name: jupyterlab-cell-layout
+project_short_description: Drag-and-drop cell layout for engineering design documentation
+    with PDF export
+python_name: jupyterlab_cell_layout
+repository: ''
+test: true
+

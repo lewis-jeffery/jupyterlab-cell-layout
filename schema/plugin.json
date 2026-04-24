@@ -1,0 +1,54 @@
+{
+  "jupyter.lab.shortcuts": [
+    {
+      "command": "jupyterlab-cell-layout:toggle-mode",
+      "keys": ["Ctrl Shift T"],
+      "selector": ".jp-Notebook"
+    },
+    {
+      "command": "jupyterlab-cell-layout:toggle-cell-inclusion",
+      "keys": ["Ctrl Shift E"],
+      "selector": ".jp-Notebook"
+    }
+  ],
+  "title": "Cell Layout",
+  "description": "Drag-and-drop cell layout for engineering design documentation.",
+  "type": "object",
+  "properties": {
+    "pageSize": {
+      "type": "string",
+      "enum": ["A4", "A3"],
+      "default": "A4",
+      "title": "Page size",
+      "description": "Physical page size for the summary-mode layout canvas. A4 is 210 × 297 mm, A3 is 297 × 420 mm. Per-notebook overrides are stored in notebook metadata."
+    },
+    "orientation": {
+      "type": "string",
+      "enum": ["portrait", "landscape"],
+      "default": "portrait",
+      "title": "Orientation",
+      "description": "Default page orientation for new notebooks. Landscape swaps the page's width and height. Per-notebook overrides are stored in notebook metadata."
+    },
+    "defaultSummaryLines": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 3,
+      "title": "Default summary lines",
+      "description": "Number of input lines visible in summary mode before truncation."
+    },
+    "gridSnap": {
+      "type": "number",
+      "minimum": 0,
+      "default": 5,
+      "title": "Grid snap (mm)",
+      "description": "Snap grid size in millimetres for cell drag/resize. Set to 0 to disable snapping."
+    },
+    "showReadingOrderBadges": {
+      "type": "boolean",
+      "default": true,
+      "title": "Show reading-order badges",
+      "description": "Show a small numbered badge on each cell in summary mode indicating its PDF export reading order (left-to-right, top-to-bottom)."
+    }
+  },
+  "additionalProperties": false
+}

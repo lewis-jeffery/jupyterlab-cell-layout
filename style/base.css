@@ -1,0 +1,212 @@
+/*
+    See the JupyterLab Developer Guide for useful CSS Patterns:
+
+    https://jupyterlab.readthedocs.io/en/stable/developer/css.html
+*/
+
+.jp-CellLayout-root {
+  background: var(--jp-layout-color2, #f4f4f4);
+}
+
+.jp-CellLayout-page {
+  overflow: hidden;
+}
+
+.jp-CellLayout-input,
+.jp-CellLayout-output {
+  box-sizing: border-box;
+  background: var(--jp-layout-color1, #fff);
+  border: 1px solid var(--jp-border-color2, #ddd);
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 1.35;
+  user-select: none;
+  cursor: grab;
+  touch-action: none;
+}
+
+.jp-CellLayout-input.jp-CellLayout-dragging,
+.jp-CellLayout-output.jp-CellLayout-dragging,
+.jp-CellLayout-input.jp-CellLayout-resizing,
+.jp-CellLayout-output.jp-CellLayout-resizing {
+  opacity: 0.85;
+  z-index: 100 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.jp-CellLayout-input.jp-CellLayout-dragging,
+.jp-CellLayout-output.jp-CellLayout-dragging {
+  cursor: grabbing;
+}
+
+.jp-CellLayout-handle {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: var(--jp-brand-color1, #2196f3);
+  border: 1px solid white;
+  z-index: 50;
+  opacity: 0;
+  transition: opacity 120ms;
+  touch-action: none;
+}
+
+.jp-CellLayout-input:hover .jp-CellLayout-handle,
+.jp-CellLayout-output:hover .jp-CellLayout-handle,
+.jp-CellLayout-input.jp-CellLayout-resizing .jp-CellLayout-handle,
+.jp-CellLayout-output.jp-CellLayout-resizing .jp-CellLayout-handle {
+  opacity: 1;
+}
+
+.jp-CellLayout-handle-nw {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+.jp-CellLayout-handle-n {
+  top: -4px;
+  left: calc(50% - 4px);
+  cursor: ns-resize;
+}
+.jp-CellLayout-handle-ne {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+.jp-CellLayout-handle-e {
+  top: calc(50% - 4px);
+  right: -4px;
+  cursor: ew-resize;
+}
+.jp-CellLayout-handle-se {
+  bottom: -4px;
+  right: -4px;
+  cursor: nwse-resize;
+}
+.jp-CellLayout-handle-s {
+  bottom: -4px;
+  left: calc(50% - 4px);
+  cursor: ns-resize;
+}
+.jp-CellLayout-handle-sw {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+.jp-CellLayout-handle-w {
+  top: calc(50% - 4px);
+  left: -4px;
+  cursor: ew-resize;
+}
+
+.jp-CellLayout-input {
+  background: var(--jp-cell-editor-background, #f7f7f7);
+}
+
+.jp-CellLayout-inputHeader {
+  font-size: 9px;
+  color: var(--jp-ui-font-color2, #666);
+  background: var(--jp-layout-color2, #efefef);
+  border-bottom: 1px solid var(--jp-border-color3, #e0e0e0);
+  padding: 2px 6px;
+  font-family: var(--jp-ui-font-family, system-ui, sans-serif);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+.jp-CellLayout-inputBody {
+  margin: 0;
+  padding: 4px 6px;
+  font-family: var(
+    --jp-code-font-family,
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace
+  );
+  font-size: 10px;
+  white-space: pre;
+  overflow: hidden;
+  color: var(--jp-content-font-color1, #000);
+}
+
+.jp-CellLayout-output {
+  padding: 4px 6px;
+  background: var(--jp-layout-color0, #fff);
+}
+
+.jp-CellLayout-output-output_a {
+  font-family: var(
+    --jp-code-font-family,
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace
+  );
+  font-size: 10px;
+}
+
+.jp-CellLayout-output-output_b {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.jp-CellLayout-outputEmpty {
+  color: var(--jp-ui-font-color3, #aaa);
+  font-style: italic;
+  font-size: 10px;
+}
+
+.jp-CellLayout-stream,
+.jp-CellLayout-plain,
+.jp-CellLayout-error {
+  margin: 0;
+  padding: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.jp-CellLayout-stream-stderr {
+  color: var(--jp-error-color1, #d9534f);
+}
+
+.jp-CellLayout-error {
+  color: var(--jp-error-color1, #d9534f);
+  font-family: var(--jp-code-font-family, ui-monospace, monospace);
+  font-size: 10px;
+}
+
+.jp-CellLayout-html {
+  font-size: 10px;
+  overflow: hidden;
+}
+
+.jp-CellLayout-image,
+.jp-CellLayout-svg {
+  display: block;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.jp-CellLayout-placeholder {
+  color: var(--jp-ui-font-color3, #999);
+  font-style: italic;
+  font-size: 10px;
+  padding: 6px;
+  border: 1px dashed var(--jp-border-color3, #ddd);
+  text-align: center;
+}
+
+.jp-CellLayout-cellExcluded {
+  opacity: 0.55;
+}
+
+.jp-CellLayout-cellExcluded .jp-InputArea-prompt::after {
+  content: ' · excluded from summary';
+  color: var(--jp-ui-font-color3, #999);
+  font-style: italic;
+  font-size: 10px;
+}
