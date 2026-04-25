@@ -39,6 +39,15 @@ export class LayoutCanvas extends Widget {
     this.node.appendChild(this._page);
 
     coordinator.changed.connect(this._onCellsChanged, this);
+    coordinator.settingsChanged.connect(this._onSettingsChanged, this);
+  }
+
+  private _onSettingsChanged(): void {
+    if (!this.isVisible) {
+      return;
+    }
+    const layout = this.manager.read();
+    this._applyPageBounds(layout.settings);
   }
 
   dispose(): void {
@@ -46,11 +55,13 @@ export class LayoutCanvas extends Widget {
       return;
     }
     this.coordinator.changed.disconnect(this._onCellsChanged, this);
+    this.coordinator.settingsChanged.disconnect(this._onSettingsChanged, this);
     this._clearCells();
     super.dispose();
   }
 
   refresh(): void {
+    this.coordinator.ensureEnoughPages();
     const layout = this.manager.read();
     this._clearCells();
     this._applyPageBounds(layout.settings);

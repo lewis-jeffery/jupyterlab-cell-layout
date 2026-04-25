@@ -5,14 +5,18 @@ import {
   ROW_GAP_MM,
   SLOT_GAP_MM,
   computeDefaultLayoutsForCells,
+  computeRequiredPageCount,
   pageBoundsFor,
+  pageHeightMmFor,
   pruneStaleCells,
   type ICellInfo
 } from '../cell-coordinator';
 import {
+  defaultNotebookLayout,
   defaultSettings,
   type ICellLayout,
-  type ILayoutSettings
+  type ILayoutSettings,
+  type INotebookLayout
 } from '../metadata';
 
 function a4Settings(overrides: Partial<ILayoutSettings> = {}): ILayoutSettings {
@@ -155,6 +159,95 @@ describe('computeDefaultLayoutsForCells', () => {
     );
     expect(layouts[0].mode).toBe('summary');
     expect(layouts[1].mode).toBe('summary');
+  });
+});
+
+describe('pageHeightMmFor', () => {
+  it('returns A4 portrait height', () => {
+    expect(pageHeightMmFor(a4Settings())).toBe(297);
+  });
+
+  it('returns A4 landscape height (= portrait width)', () => {
+    expect(pageHeightMmFor(a4Settings({ orientation: 'landscape' }))).toBe(210);
+  });
+});
+
+function layoutWithCells(
+  cells: INotebookLayout['cells'],
+  pageCount = 1
+): INotebookLayout {
+  const base = defaultNotebookLayout();
+  return {
+    ...base,
+    settings: { ...base.settings, page_count: pageCount },
+    cells
+  };
+}
+
+describe('computeRequiredPageCount', () => {
+  const inputAt = (y: number, height: number): ICellLayout => ({
+    type: 'code',
+    mode: 'summary',
+    input: {
+      position: { x: 0, y },
+      size: { width: 100, height },
+      visible_lines: 3,
+      z_index: 1,
+      auto_fit: false
+    },
+    outputs: []
+  });
+
+  it('returns current page_count when there are no cells', () => {
+    expect(computeRequiredPageCount(layoutWithCells({}, 3))).toBe(3);
+  });
+
+  it('returns 1 for cells fitting on the first page', () => {
+    expect(
+      computeRequiredPageCount(layoutWithCells({ a: inputAt(10, 50) }, 1))
+    ).toBe(1);
+  });
+
+  it('returns 2 for a cell that crosses into the second page', () => {
+    expect(
+      computeRequiredPageCount(layoutWithCells({ a: inputAt(280, 50) }, 1))
+    ).toBe(2);
+  });
+
+  it('returns 3 for a cell deep on page 3', () => {
+    expect(
+      computeRequiredPageCount(layoutWithCells({ a: inputAt(620, 30) }, 1))
+    ).toBe(3);
+  });
+
+  it('caps at MAX_PAGE_COUNT (20) for absurd positions', () => {
+    expect(
+      computeRequiredPageCount(layoutWithCells({ a: inputAt(99999, 30) }, 1))
+    ).toBe(20);
+  });
+
+  it('uses the largest output bottom edge when greater than input', () => {
+    const cell = inputAt(10, 30);
+    cell.outputs = [
+      {
+        output_id: 'output_b',
+        type: 'graphics',
+        position: { x: 0, y: 400 },
+        size: { width: 100, height: 50 },
+        visible_lines: null,
+        z_index: 2,
+        max_image_width: 90,
+        enabled: true,
+        auto_fit: false
+      }
+    ];
+    expect(computeRequiredPageCount(layoutWithCells({ a: cell }, 1))).toBe(2);
+  });
+
+  it('ignores cells whose mode is not summary', () => {
+    const cell = inputAt(620, 30);
+    cell.mode = 'edit';
+    expect(computeRequiredPageCount(layoutWithCells({ a: cell }, 1))).toBe(1);
   });
 });
 

@@ -268,6 +268,7 @@ function attachNotebook(panel: NotebookPanel): void {
       tooltip: 'Toggle cell layout summary mode (Ctrl+Shift+T)',
       onClick: () => toggleMode(panel)
     });
+    modeButton.addClass('jp-CellLayout-tbItem');
     panel.toolbar.insertItem(10, 'cellLayoutToggle', modeButton);
 
     const orientationButton = new ToolbarButton({
@@ -275,6 +276,7 @@ function attachNotebook(panel: NotebookPanel): void {
       tooltip: 'Toggle page orientation (portrait / landscape)',
       onClick: () => toggleOrientation(panel)
     });
+    orientationButton.addClass('jp-CellLayout-tbItem');
     panel.toolbar.insertItem(11, 'cellLayoutOrientation', orientationButton);
 
     const initialPageCount = manager.read().settings.page_count;
@@ -295,6 +297,7 @@ function attachNotebook(panel: NotebookPanel): void {
       },
       true
     );
+    pageCountButton.addClass('jp-CellLayout-tbItem');
     panel.toolbar.insertItem(12, 'cellLayoutPageCount', pageCountButton);
 
     const exportButton = new ToolbarButton({
@@ -304,6 +307,7 @@ function attachNotebook(panel: NotebookPanel): void {
         void exportCurrentNotebookToPdf(panel);
       }
     });
+    exportButton.addClass('jp-CellLayout-tbItem');
     panel.toolbar.insertItem(13, 'cellLayoutExportPdf', exportButton);
 
     state.set(panel, {
@@ -320,6 +324,16 @@ function attachNotebook(panel: NotebookPanel): void {
     reapplyCellExclusionClasses(panel);
 
     coordinator.changed.connect(() => reapplyCellExclusionClasses(panel));
+    coordinator.settingsChanged.connect(() => {
+      const s = state.get(panel);
+      if (!s) {
+        return;
+      }
+      updatePageCountButtonLabel(
+        s.pageCountButton,
+        s.manager.read().settings.page_count
+      );
+    });
 
       panel.disposed.connect(() => {
         coordinator.dispose();

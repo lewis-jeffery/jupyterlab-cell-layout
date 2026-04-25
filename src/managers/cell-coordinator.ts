@@ -7,8 +7,10 @@ import {
   type ICellLayout,
   type IInputLayout,
   type ILayoutSettings,
+  type INotebookLayout,
   type IOutputLayout,
   type IPosition,
+  MAX_PAGE_COUNT,
   MetadataManager,
   type OutputSlotId,
   PAGE_SIZES_MM
@@ -19,6 +21,7 @@ export const ROW_GAP_MM = 5;
 export const DEFAULT_INPUT_HEIGHT_MM = 40;
 export const DEFAULT_OUTPUT_HEIGHT_MM = 45;
 export const SLOT_GAP_MM = 2;
+export const AUTO_GROW_BOTTOM_MARGIN_MM = 5;
 
 export interface IPageBounds {
   width: number;
@@ -115,6 +118,46 @@ export function computeDefaultLayoutsForCells(
   return layouts;
 }
 
+/**
+ * Page height in mm honouring portrait/landscape from settings.
+ */
+export function pageHeightMmFor(settings: ILayoutSettings): number {
+  const dims = PAGE_SIZES_MM[settings.page_size];
+  return settings.orientation === 'landscape' ? dims.width : dims.height;
+}
+
+/**
+ * Compute the minimum number of pages required to fit every summary-mode
+ * cell on the canvas, with a small bottom margin so content doesn't crowd
+ * the page edge. Capped at MAX_PAGE_COUNT.
+ */
+export function computeRequiredPageCount(layout: INotebookLayout): number {
+  const pageHeight = pageHeightMmFor(layout.settings);
+  let maxBottom = 0;
+  for (const cell of Object.values(layout.cells)) {
+    if (cell.mode !== 'summary') {
+      continue;
+    }
+    maxBottom = Math.max(
+      maxBottom,
+      cell.input.position.y + cell.input.size.height
+    );
+    for (const o of cell.outputs) {
+      if (!o.enabled) {
+        continue;
+      }
+      maxBottom = Math.max(maxBottom, o.position.y + o.size.height);
+    }
+  }
+  if (maxBottom <= 0) {
+    return Math.max(1, layout.settings.page_count);
+  }
+  const needed = Math.ceil(
+    (maxBottom + AUTO_GROW_BOTTOM_MARGIN_MM) / pageHeight
+  );
+  return Math.max(1, Math.min(MAX_PAGE_COUNT, needed));
+}
+
 export function pruneStaleCells(
   cells: Record<string, ICellLayout>,
   liveIds: ReadonlySet<string>
@@ -137,6 +180,7 @@ export interface ICellEntry {
 
 export class CellCoordinator {
   private readonly _changed = new Signal<this, void>(this);
+  private readonly _settingsChanged = new Signal<this, void>(this);
   private _disposed = false;
 
   constructor(
@@ -148,6 +192,15 @@ export class CellCoordinator {
 
   get changed(): ISignal<this, void> {
     return this._changed;
+  }
+
+  /**
+   * Emitted when notebook-level settings (e.g. page_count) change as a
+   * side-effect of layout edits — distinct from `changed`, which fires on
+   * cell add/remove/reorder.
+   */
+  get settingsChanged(): ISignal<this, void> {
+    return this._settingsChanged;
   }
 
   dispose(): void {
@@ -203,6 +256,26 @@ export class CellCoordinator {
 
   persistLayout(cellId: string, layout: ICellLayout): void {
     this.manager.setCell(cellId, layout);
+    this.ensureEnoughPages();
+  }
+
+  /**
+   * If any cell extends past the current canvas, bump page_count up to fit.
+   * Never shrinks — page removal is user-initiated. Returns true if
+   * page_count grew.
+   */
+  ensureEnoughPages(): boolean {
+    const layout = this.manager.read();
+    const needed = computeRequiredPageCount(layout);
+    if (needed <= layout.settings.page_count) {
+      return false;
+    }
+    this.manager.update(l => ({
+      ...l,
+      settings: { ...l.settings, page_count: needed }
+    }));
+    this._settingsChanged.emit();
+    return true;
   }
 
   pruneStaleLayouts(): void {

@@ -20,7 +20,7 @@ import {
   type MetadataManager,
   PAGE_SIZES_MM
 } from '../managers/metadata';
-import { mmToPx } from '../widgets/units';
+import { mmToPx, pxToMm } from '../widgets/units';
 
 const CAPTURE_SCALE = 2;
 const EXPORTING_CLASS = 'jp-CellLayout-exporting';
@@ -61,6 +61,7 @@ export async function exportToPdf(
 
   pageEl.classList.add(EXPORTING_CLASS);
   let fullCanvas: HTMLCanvasElement;
+  let linkRects: ILinkRect[];
   try {
     fullCanvas = await html2canvas(pageEl, {
       scale: CAPTURE_SCALE,
@@ -68,6 +69,9 @@ export async function exportToPdf(
       useCORS: true,
       logging: false
     });
+    // Capture link positions while straddle adjustments are still applied,
+    // so the rect's Y offset matches the bitmap.
+    linkRects = collectLinkRects(pageEl);
   } finally {
     pageEl.classList.remove(EXPORTING_CLASS);
     restoreStraddles();
@@ -92,6 +96,19 @@ export async function exportToPdf(
       pdf.addPage();
     }
     pdf.addImage(dataUrl, 'PNG', 0, 0, pageWidthMm, pageHeightMm);
+  }
+
+  // Add link annotations on top of each PDF page so URLs are clickable.
+  for (const link of linkRects) {
+    const pageIndex = Math.floor(link.topMm / pageHeightMm);
+    if (pageIndex < 0 || pageIndex >= pageCount) {
+      continue;
+    }
+    pdf.setPage(pageIndex + 1);
+    const localTopMm = link.topMm - pageIndex * pageHeightMm;
+    pdf.link(link.leftMm, localTopMm, link.widthMm, link.heightMm, {
+      url: link.href
+    });
   }
 
   const filename = (options.filename ?? deriveFilename(panel)) + '.pdf';
@@ -121,6 +138,45 @@ function deriveFilename(panel: NotebookPanel): string {
   const path = panel.context.path;
   const base = path.split('/').pop() ?? 'notebook';
   return base.replace(/\.ipynb$/i, '');
+}
+
+interface ILinkRect {
+  href: string;
+  leftMm: number;
+  topMm: number;
+  widthMm: number;
+  heightMm: number;
+}
+
+/**
+ * Walk the rendered DOM for `<a href>` tags and capture their position
+ * relative to the page element. Used to add link annotations to the PDF
+ * after the bitmap is rasterised.
+ */
+function collectLinkRects(pageEl: HTMLElement): ILinkRect[] {
+  const pageRect = pageEl.getBoundingClientRect();
+  const rects: ILinkRect[] = [];
+  for (const a of Array.from(pageEl.querySelectorAll('a'))) {
+    const href = a.getAttribute('href');
+    if (!href) {
+      continue;
+    }
+    if (!/^(https?|mailto|ftp):/i.test(href)) {
+      continue;
+    }
+    const r = a.getBoundingClientRect();
+    if (r.width <= 0 || r.height <= 0) {
+      continue;
+    }
+    rects.push({
+      href,
+      leftMm: pxToMm(r.left - pageRect.left),
+      topMm: pxToMm(r.top - pageRect.top),
+      widthMm: pxToMm(r.width),
+      heightMm: pxToMm(r.height)
+    });
+  }
+  return rects;
 }
 
 /**

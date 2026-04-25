@@ -194,10 +194,15 @@ export class SummaryInputCell extends Widget {
       await renderer.renderModel(model);
       renderer.addClass('jp-CellLayout-md');
       body.appendChild(renderer.node);
-      // Open links in a new tab so they don't replace the JL session
+      // JL's rendermime may attach its own click handlers to anchors during
+      // render that swallow external navigation. Deep-clone each <a> and
+      // replace the original — the clone has no inherited event listeners,
+      // so default browser behaviour (target=_blank navigation) takes over.
       for (const a of Array.from(renderer.node.querySelectorAll('a'))) {
-        a.setAttribute('target', '_blank');
-        a.setAttribute('rel', 'noopener noreferrer');
+        const clone = a.cloneNode(true) as HTMLAnchorElement;
+        clone.setAttribute('target', '_blank');
+        clone.setAttribute('rel', 'noopener noreferrer');
+        a.replaceWith(clone);
       }
       await waitForImages(renderer.node);
       this._maybeAutoFit(renderer.node);

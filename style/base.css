@@ -8,6 +8,13 @@
   background: var(--jp-layout-color2, #f4f4f4);
 }
 
+/* Add a little space between the extension's own toolbar buttons so they
+ * read as a group and don't crowd JL's built-in toolbar items. */
+.jp-Toolbar-item.jp-CellLayout-tbItem,
+.jp-CellLayout-tbItem {
+  margin-left: 6px;
+}
+
 .jp-CellLayout-page {
   overflow: hidden;
 }

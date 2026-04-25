@@ -1,8 +1,8 @@
 # JupyterLab Cell Layout — Task List
 
-_Last updated: 2026-04-25_
+_Last updated: 2026-04-26_
 
-Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked
+Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · ⏸ deferred
 
 ## 🎯 Milestones
 
@@ -11,14 +11,16 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked
 - **Milestone 2b**: Resizable cells — ✅ done
 - **Milestone 2c**: Grid snap + z-index — ✅ done
 - **Polish round 1**: Markdown rendering, image scaling, cell labels, overflow-clip code — ✅ done
-- **Polish round 2**: Auto-fit slots to images, markdown links, output padding — ✅ done
-- **Milestone 3a**: Multi-page canvas (page count, page-break guides, page numbers) — ✅ done
+- **Polish round 2**: Auto-fit slots to images, output padding — ✅ done
+- **Milestone 3a**: Multi-page canvas — ✅ done
+- **Milestone 3b**: PDF export (rasterised, page-size & straddle aware) — ✅ done
+- **Polish round 3**: Auto-grow page count + toolbar spacing — ✅ done
 
 ## Phase status
 
 - **Phase 1** ✅ fully delivered
 - **Phase 2** ✅ fully delivered
-- **Phase 3** 🟡 in progress — 3a (multi-page canvas) done; 3b (PDF export), 3c (multi-page PDF), 3d (cover sheet), 3e (polish) remain
+- **Phase 3** 🟢 PDF export usable end-to-end. Cover sheet, ToC, and a markdown-link bug remain.
 - **Phase 4** 🔒 blocked
 
 ## ✅ Completed
@@ -35,11 +37,14 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked
 
 ## 🟢 In progress
 
-_(none)_
+- **#14** Phase 3 rollup (PDF export, polish, docs) — PDF export usable; remaining work is cover sheet (#26), docs, and minor bugs.
+
+## ⏸ Deferred
+
+- **#28** Markdown links don't navigate in summary view or PDF — two fixes tried (capture-phase click, deep-clone-and-replace), neither works. User flagged as non-critical 2026-04-26. Diagnostic step: devtools console + cursor inspection.
 
 ## ⬜ Available
 
-- **#14** Phase 3 rollup (PDF export, polish, docs)
 - **#26** PDF cover sheet (title, author, date, optional ToC) — depends on #14
 
 ## 🔒 Blocked
@@ -51,7 +56,7 @@ _(none)_
 
 - **Phase 1** ✅ done
 - **Phase 2** ✅ done
-- **Phase 3** in progress: #25 ✅ → #14 (PDF export) → #26 (cover sheet) → optional #27 (ToC sidebar)
+- **Phase 3** in progress: #25 ✅ → PDF export ✅ → #26 (cover sheet) → optional #27 (ToC sidebar) → #14 close-out
 - **Phase 4**: #15
 
 ## Design decisions (see Claude's memory for details; `CLAUDE.md` for spec)
@@ -63,9 +68,10 @@ _(none)_
 5. Coordinate units are millimetres.
 6. Drag/resize locked while a cell executes; output content still streams live.
 7. PDF reading order: left-to-right, top-to-bottom with optional counter badge.
-8. Page-break straddle: push whole cell to next page; never split a cell. (Enforced at PDF export, not in editor.)
+8. Page-break straddle: push whole cell to next page; never split a cell. (Enforced at PDF export time.)
 9. A/B slot override UI deferred past v1.
 10. Disabled output slots are hidden entirely (no canvas space).
 11. Slots auto-fit to image natural size on first render (outputs and markdown); auto_fit flag flips to false after first fit or any manual resize.
 12. Multi-page canvas and ToC are coupled to PDF export work — build together to avoid double-work on page-break / reading-order interactions.
 13. Empty output slots are suppressed at render time (don't show a placeholder box). Slot metadata persists; the slot reappears at its saved position when the cell next produces output.
+14. Page count auto-grows when cells extend past the current canvas. Auto-shrink is not done — page removal is user-initiated (shift-click on the page-count toolbar button or Ctrl+Shift+[).
