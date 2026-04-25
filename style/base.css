@@ -12,6 +12,34 @@
   overflow: hidden;
 }
 
+.jp-CellLayout-pageBreak {
+  position: absolute;
+  left: 0;
+  height: 0;
+  pointer-events: none;
+  border-top: 1px dashed var(--jp-border-color1, #999);
+  z-index: 1;
+}
+
+.jp-CellLayout-pageNumber {
+  position: absolute;
+  right: 6px;
+  font-size: 9px;
+  font-family: var(--jp-ui-font-family, system-ui, sans-serif);
+  color: var(--jp-ui-font-color3, #999);
+  background: rgba(255, 255, 255, 0.7);
+  padding: 0 4px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Hide editor chrome during PDF export so the rendered bitmap is clean.
+ * Page-number badges intentionally stay visible — useful in the printed PDF. */
+.jp-CellLayout-exporting .jp-CellLayout-pageBreak,
+.jp-CellLayout-exporting .jp-CellLayout-handle {
+  display: none !important;
+}
+
 .jp-CellLayout-input,
 .jp-CellLayout-output {
   box-sizing: border-box;

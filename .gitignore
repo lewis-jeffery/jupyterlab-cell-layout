@@ -19,6 +19,7 @@ junit.xml
 # Project-level local state (not part of the repo)
 .claude/
 Archive/
+test/
 BookProperties.plist
 CLAUDE.md.plist
 test_1.ipynb

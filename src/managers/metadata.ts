@@ -62,10 +62,14 @@ export interface ICellLayout {
 export interface ILayoutSettings {
   page_size: PageSize;
   orientation: PageOrientation;
+  page_count: number;
   grid_snap: number;
   default_summary_lines: number;
   notebook_mode: NotebookMode;
 }
+
+export const DEFAULT_PAGE_COUNT = 1;
+export const MAX_PAGE_COUNT = 20;
 
 export interface INotebookLayout {
   version: string;
@@ -78,6 +82,7 @@ export function defaultSettings(): ILayoutSettings {
   return {
     page_size: DEFAULT_PAGE_SIZE,
     orientation: DEFAULT_PAGE_ORIENTATION,
+    page_count: DEFAULT_PAGE_COUNT,
     grid_snap: DEFAULT_GRID_SNAP_MM,
     default_summary_lines: DEFAULT_SUMMARY_LINES,
     notebook_mode: 'edit'
@@ -276,9 +281,16 @@ export function normalizeSettings(raw: unknown): ILayoutSettings {
   );
   const notebook_mode: NotebookMode =
     raw.notebook_mode === 'summary' ? 'summary' : 'edit';
+  const page_count =
+    typeof raw.page_count === 'number' &&
+    Number.isFinite(raw.page_count) &&
+    raw.page_count >= 1
+      ? Math.min(MAX_PAGE_COUNT, Math.floor(raw.page_count))
+      : fallback.page_count;
   return {
     page_size,
     orientation,
+    page_count,
     grid_snap,
     default_summary_lines,
     notebook_mode

@@ -52,8 +52,8 @@ export class LayoutCanvas extends Widget {
 
   refresh(): void {
     const layout = this.manager.read();
-    this._applyPageBounds(layout.settings);
     this._clearCells();
+    this._applyPageBounds(layout.settings);
     for (const entry of this.coordinator.list()) {
       if (entry.layout.mode !== 'summary') {
         continue;
@@ -96,20 +96,55 @@ export class LayoutCanvas extends Widget {
   private _applyPageBounds(settings: {
     page_size: PageSize;
     orientation: PageOrientation;
+    page_count: number;
   }): void {
     this._currentPageSize = settings.page_size;
     this._currentOrientation = settings.orientation;
     const bounds = pageBoundsFor({
       page_size: settings.page_size,
       orientation: settings.orientation,
+      page_count: 1,
       grid_snap: 0,
       default_summary_lines: 3,
       notebook_mode: 'edit'
     });
-    this._page.style.width = `${mmToPx(bounds.width)}px`;
-    this._page.style.height = `${mmToPx(bounds.height)}px`;
+    const pageCount = Math.max(1, Math.floor(settings.page_count));
+    const pageHeightPx = mmToPx(bounds.height);
+    const widthPx = mmToPx(bounds.width);
+    this._page.style.width = `${widthPx}px`;
+    this._page.style.height = `${pageHeightPx * pageCount}px`;
     this._page.dataset.pageSize = settings.page_size;
     this._page.dataset.orientation = settings.orientation;
+    this._page.dataset.pageCount = String(pageCount);
+    this._renderPageBreaks(pageCount, widthPx, pageHeightPx);
+  }
+
+  private _renderPageBreaks(
+    count: number,
+    widthPx: number,
+    pageHeightPx: number
+  ): void {
+    // Remove any old break/label nodes
+    for (const el of Array.from(
+      this._page.querySelectorAll('.jp-CellLayout-pageBreak, .jp-CellLayout-pageNumber')
+    )) {
+      el.remove();
+    }
+    for (let i = 0; i < count; i++) {
+      const label = document.createElement('div');
+      label.className = 'jp-CellLayout-pageNumber';
+      label.textContent = `Page ${i + 1} of ${count}`;
+      // Anchor at the bottom-right of page i: 18px above the bottom edge of the page
+      label.style.top = `${pageHeightPx * (i + 1) - 18}px`;
+      this._page.appendChild(label);
+      if (i > 0) {
+        const brk = document.createElement('div');
+        brk.className = 'jp-CellLayout-pageBreak';
+        brk.style.top = `${pageHeightPx * i}px`;
+        brk.style.width = `${widthPx}px`;
+        this._page.appendChild(brk);
+      }
+    }
   }
 
   private _clearCells(): void {

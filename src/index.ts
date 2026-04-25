@@ -11,6 +11,7 @@ import {
 import { BoxLayout } from '@lumino/widgets';
 
 import { showLayoutInfoDialog } from './demo/info-dialog';
+import { exportToPdf, PdfExportError } from './exporters/pdf-export';
 import { CellCoordinator } from './managers/cell-coordinator';
 import {
   LAYOUT_METADATA_KEY,
@@ -25,7 +26,12 @@ const COMMAND_TOGGLE_ORIENTATION =
   'jupyterlab-cell-layout:toggle-orientation';
 const COMMAND_TOGGLE_CELL_INCLUSION =
   'jupyterlab-cell-layout:toggle-cell-inclusion';
+const COMMAND_ADD_PAGE = 'jupyterlab-cell-layout:add-page';
+const COMMAND_REMOVE_PAGE = 'jupyterlab-cell-layout:remove-page';
+const COMMAND_EXPORT_PDF = 'jupyterlab-cell-layout:export-pdf';
 const COMMAND_SHOW_INFO = 'jupyterlab-cell-layout:show-info';
+
+const MAX_PAGES = 20;
 const CSS_SUMMARY_MODE = 'jp-CellLayout-summaryMode';
 
 interface IUserDefaults {
@@ -44,6 +50,8 @@ interface INotebookState {
   canvas: LayoutCanvas;
   modeButton: ToolbarButton;
   orientationButton: ToolbarButton;
+  pageCountButton: ToolbarButton;
+  exportButton: ToolbarButton;
 }
 
 const state = new WeakMap<NotebookPanel, INotebookState>();
@@ -146,6 +154,61 @@ function reapplyCellExclusionClasses(panel: NotebookPanel): void {
   }
 }
 
+async function exportCurrentNotebookToPdf(panel: NotebookPanel): Promise<void> {
+  const s = state.get(panel);
+  if (!s) {
+    return;
+  }
+  const pageEl = s.canvas.node.querySelector(
+    '.jp-CellLayout-page'
+  ) as HTMLElement | null;
+  if (!pageEl) {
+    console.warn('jupyterlab-cell-layout: no page element to export');
+    return;
+  }
+  try {
+    const filename = await exportToPdf(panel, s.manager, pageEl);
+    console.log(`jupyterlab-cell-layout: exported ${filename}`);
+  } catch (err) {
+    if (err instanceof PdfExportError) {
+      window.alert(err.message);
+    } else {
+      console.error('jupyterlab-cell-layout: PDF export failed', err);
+      window.alert(`PDF export failed: ${(err as Error).message ?? err}`);
+    }
+  }
+}
+
+function changePageCount(panel: NotebookPanel, delta: number): void {
+  const s = state.get(panel);
+  if (!s) {
+    return;
+  }
+  const current = s.manager.read().settings.page_count;
+  const next = Math.max(1, Math.min(MAX_PAGES, current + delta));
+  if (next === current) {
+    return;
+  }
+  s.manager.update(layout => ({
+    ...layout,
+    settings: { ...layout.settings, page_count: next }
+  }));
+  updatePageCountButtonLabel(s.pageCountButton, next);
+  if (isSummaryMode(s.manager)) {
+    s.canvas.refresh();
+  }
+}
+
+function updatePageCountButtonLabel(
+  button: ToolbarButton,
+  count: number
+): void {
+  const labelEl = button.node.querySelector('.jp-ToolbarButtonComponent-label');
+  if (labelEl) {
+    labelEl.textContent = `${count} page${count === 1 ? '' : 's'}`;
+  }
+}
+
 function toggleOrientation(panel: NotebookPanel): void {
   const s = state.get(panel);
   if (!s) {
@@ -214,12 +277,43 @@ function attachNotebook(panel: NotebookPanel): void {
     });
     panel.toolbar.insertItem(11, 'cellLayoutOrientation', orientationButton);
 
+    const initialPageCount = manager.read().settings.page_count;
+    const pageCountButton = new ToolbarButton({
+      label: `${initialPageCount} page${initialPageCount === 1 ? '' : 's'}`,
+      tooltip:
+        'Click: add page (Ctrl+Shift+])  ·  Shift-click: remove (Ctrl+Shift+[)',
+      onClick: () => changePageCount(panel, +1)
+    });
+    pageCountButton.node.addEventListener(
+      'click',
+      e => {
+        if ((e as MouseEvent).shiftKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          changePageCount(panel, -1);
+        }
+      },
+      true
+    );
+    panel.toolbar.insertItem(12, 'cellLayoutPageCount', pageCountButton);
+
+    const exportButton = new ToolbarButton({
+      label: 'Export PDF',
+      tooltip: 'Export the summary-mode layout to a PDF file',
+      onClick: () => {
+        void exportCurrentNotebookToPdf(panel);
+      }
+    });
+    panel.toolbar.insertItem(13, 'cellLayoutExportPdf', exportButton);
+
     state.set(panel, {
       manager,
       coordinator,
       canvas,
       modeButton,
-      orientationButton
+      orientationButton,
+      pageCountButton,
+      exportButton
     });
 
     applyMode(panel, isSummaryMode(manager));
@@ -232,6 +326,8 @@ function attachNotebook(panel: NotebookPanel): void {
         canvas.dispose();
         modeButton.dispose();
         orientationButton.dispose();
+        pageCountButton.dispose();
+        exportButton.dispose();
         state.delete(panel);
       });
     })
@@ -283,6 +379,39 @@ const plugin: JupyterFrontEndPlugin<void> = {
         const panel = notebooks.currentWidget;
         if (panel) {
           toggleOrientation(panel);
+        }
+      },
+      isEnabled: () => notebooks.currentWidget !== null
+    });
+
+    app.commands.addCommand(COMMAND_ADD_PAGE, {
+      label: 'Cell Layout: Add page',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          changePageCount(panel, +1);
+        }
+      },
+      isEnabled: () => notebooks.currentWidget !== null
+    });
+
+    app.commands.addCommand(COMMAND_REMOVE_PAGE, {
+      label: 'Cell Layout: Remove page',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          changePageCount(panel, -1);
+        }
+      },
+      isEnabled: () => notebooks.currentWidget !== null
+    });
+
+    app.commands.addCommand(COMMAND_EXPORT_PDF, {
+      label: 'Cell Layout: Export to PDF',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          void exportCurrentNotebookToPdf(panel);
         }
       },
       isEnabled: () => notebooks.currentWidget !== null

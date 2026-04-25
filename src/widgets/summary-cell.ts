@@ -66,6 +66,8 @@ export class SummaryCellWidget {
       rendermime,
       callbacks: inputCallbacks
     });
+    this.input.node.dataset.cellId = id;
+    this.input.node.dataset.slot = 'input';
     this.outputs = [];
 
     const routed = routeCellOutputs(cellModel);
@@ -74,6 +76,13 @@ export class SummaryCellWidget {
         continue;
       }
       const items = selectRoutedItems(routed, outLayout.output_id);
+      // Suppress empty output slots — when a code cell has produced no output
+      // for this slot, don't render an empty box on the canvas. The slot's
+      // saved position/size persist in metadata; if the cell later produces
+      // output, it'll reappear at the same place.
+      if (items.length === 0) {
+        continue;
+      }
       const slotId = outLayout.output_id;
       const slotLetter = slotId === 'output_a' ? 'A' : 'B';
       const outputCallbacks = coordinator
@@ -98,12 +107,13 @@ export class SummaryCellWidget {
               })
           }
         : undefined;
-      this.outputs.push(
-        new SummaryOutputCell(outLayout, items, {
-          displayLabel: `${indexLabel}${slotLetter}`,
-          callbacks: outputCallbacks
-        })
-      );
+      const outputCell = new SummaryOutputCell(outLayout, items, {
+        displayLabel: `${indexLabel}${slotLetter}`,
+        callbacks: outputCallbacks
+      });
+      outputCell.node.dataset.cellId = id;
+      outputCell.node.dataset.slot = slotId;
+      this.outputs.push(outputCell);
     }
   }
 
