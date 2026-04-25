@@ -2,18 +2,25 @@ import {
   JupyterFrontEnd,
   JupyterFrontEndPlugin
 } from '@jupyterlab/application';
-import { ToolbarButton } from '@jupyterlab/apputils';
+import {
+  Dialog,
+  ICommandPalette,
+  ToolbarButton,
+  showDialog
+} from '@jupyterlab/apputils';
 import { INotebookTracker, NotebookPanel } from '@jupyterlab/notebook';
 import {
   ISettingRegistry,
   type ISettingRegistry as ISettingRegistryType
 } from '@jupyterlab/settingregistry';
-import { BoxLayout } from '@lumino/widgets';
+import { BoxLayout, Widget } from '@lumino/widgets';
 
 import { showLayoutInfoDialog } from './demo/info-dialog';
 import { exportToPdf, PdfExportError } from './exporters/pdf-export';
 import { CellCoordinator } from './managers/cell-coordinator';
+import { ExcelBridge } from './managers/excel-bridge';
 import {
+  type IExcelLink,
   LAYOUT_METADATA_KEY,
   MetadataManager,
   type PageOrientation,
@@ -30,6 +37,8 @@ const COMMAND_ADD_PAGE = 'jupyterlab-cell-layout:add-page';
 const COMMAND_REMOVE_PAGE = 'jupyterlab-cell-layout:remove-page';
 const COMMAND_EXPORT_PDF = 'jupyterlab-cell-layout:export-pdf';
 const COMMAND_SHOW_INFO = 'jupyterlab-cell-layout:show-info';
+const COMMAND_MARK_AS_EXCEL = 'jupyterlab-cell-layout:mark-as-excel-view';
+const COMMAND_CLEAR_EXCEL = 'jupyterlab-cell-layout:clear-excel-view';
 
 const MAX_PAGES = 20;
 const CSS_SUMMARY_MODE = 'jp-CellLayout-summaryMode';
@@ -50,6 +59,7 @@ interface INotebookState {
   manager: MetadataManager;
   coordinator: CellCoordinator;
   canvas: LayoutCanvas;
+  excelBridge: ExcelBridge;
   modeButton: ToolbarButton;
   orientationButton: ToolbarButton;
   pageCountButton: ToolbarButton;
@@ -181,6 +191,103 @@ async function exportCurrentNotebookToPdf(panel: NotebookPanel): Promise<void> {
   }
 }
 
+class ExcelLinkPrompt extends Widget {
+  private readonly _workbook: HTMLInputElement;
+  private readonly _sheet: HTMLInputElement;
+  private readonly _range: HTMLInputElement;
+
+  constructor(initial: Partial<IExcelLink> = {}) {
+    super({ node: document.createElement('div') });
+    const node = this.node;
+    node.style.display = 'grid';
+    node.style.gridTemplateColumns = 'auto 1fr';
+    node.style.rowGap = '6px';
+    node.style.columnGap = '8px';
+    node.style.minWidth = '320px';
+    this._workbook = mkRow(node, 'Workbook', initial.workbook ?? '', 'data.xlsx');
+    this._sheet = mkRow(node, 'Sheet', initial.sheet ?? '', 'Sheet1');
+    this._range = mkRow(
+      node,
+      'Named range',
+      initial.range ?? '',
+      'design_summary'
+    );
+  }
+
+  getValue(): IExcelLink | null {
+    const workbook = this._workbook.value.trim();
+    const sheet = this._sheet.value.trim();
+    const range = this._range.value.trim();
+    if (!workbook || !sheet || !range) {
+      return null;
+    }
+    return { workbook, sheet, range };
+  }
+}
+
+function mkRow(
+  parent: HTMLElement,
+  label: string,
+  value: string,
+  placeholder: string
+): HTMLInputElement {
+  const lab = document.createElement('label');
+  lab.textContent = label;
+  parent.appendChild(lab);
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = value;
+  input.placeholder = placeholder;
+  input.style.padding = '3px 6px';
+  parent.appendChild(input);
+  return input;
+}
+
+async function promptForExcelLink(
+  initial?: IExcelLink
+): Promise<IExcelLink | null> {
+  const body = new ExcelLinkPrompt(initial);
+  const result = await showDialog({
+    title: 'Mark cell as Excel range view',
+    body,
+    buttons: [Dialog.cancelButton(), Dialog.okButton({ label: 'Apply' })]
+  });
+  if (!result.button.accept) {
+    return null;
+  }
+  return body.getValue();
+}
+
+async function markActiveCellAsExcelView(panel: NotebookPanel): Promise<void> {
+  const s = state.get(panel);
+  const activeCell = panel.content.activeCell;
+  if (!s || !activeCell) {
+    return;
+  }
+  const cellId = activeCell.model.id;
+  const existing = s.manager.getCell(cellId)?.excel;
+  const link = await promptForExcelLink(existing);
+  if (!link) {
+    return;
+  }
+  s.coordinator.setExcelLink(cellId, link);
+  if (isSummaryMode(s.manager)) {
+    s.canvas.refresh();
+  }
+}
+
+function clearActiveCellExcelView(panel: NotebookPanel): void {
+  const s = state.get(panel);
+  const activeCell = panel.content.activeCell;
+  if (!s || !activeCell) {
+    return;
+  }
+  s.coordinator.setExcelLink(activeCell.model.id, null);
+  if (isSummaryMode(s.manager)) {
+    s.canvas.refresh();
+  }
+}
+
 function changePageCount(panel: NotebookPanel, delta: number): void {
   const s = state.get(panel);
   if (!s) {
@@ -255,10 +362,12 @@ function attachNotebook(panel: NotebookPanel): void {
       const manager = new MetadataManager(panel.model);
       seedDefaultsIfEmpty(panel, manager);
       const coordinator = new CellCoordinator(panel.model, manager);
+      const excelBridge = new ExcelBridge(panel);
       const canvas = new LayoutCanvas(
         coordinator,
         manager,
-        panel.content.rendermime
+        panel.content.rendermime,
+        excelBridge
       );
 
     const layout = panel.layout as BoxLayout;
@@ -317,6 +426,7 @@ function attachNotebook(panel: NotebookPanel): void {
       manager,
       coordinator,
       canvas,
+      excelBridge,
       modeButton,
       orientationButton,
       pageCountButton,
@@ -375,11 +485,12 @@ const plugin: JupyterFrontEndPlugin<void> = {
     'Drag-and-drop cell layout for engineering design documentation with PDF export',
   autoStart: true,
   requires: [INotebookTracker],
-  optional: [ISettingRegistry],
+  optional: [ISettingRegistry, ICommandPalette],
   activate: (
     app: JupyterFrontEnd,
     notebooks: INotebookTracker,
-    settingRegistry: ISettingRegistry | null
+    settingRegistry: ISettingRegistry | null,
+    palette: ICommandPalette | null
   ) => {
     console.log('JupyterLab extension jupyterlab-cell-layout is activated!');
 
@@ -461,6 +572,49 @@ const plugin: JupyterFrontEndPlugin<void> = {
       },
       isEnabled: () => notebooks.currentWidget !== null
     });
+
+    app.commands.addCommand(COMMAND_MARK_AS_EXCEL, {
+      label: 'Cell Layout: Mark active cell as Excel range view',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          void markActiveCellAsExcelView(panel);
+        }
+      },
+      isEnabled: () =>
+        notebooks.currentWidget !== null &&
+        notebooks.currentWidget.content.activeCell !== null
+    });
+
+    app.commands.addCommand(COMMAND_CLEAR_EXCEL, {
+      label: 'Cell Layout: Clear Excel range link from active cell',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          clearActiveCellExcelView(panel);
+        }
+      },
+      isEnabled: () =>
+        notebooks.currentWidget !== null &&
+        notebooks.currentWidget.content.activeCell !== null
+    });
+
+    if (palette) {
+      const category = 'Cell Layout';
+      for (const command of [
+        COMMAND_TOGGLE_MODE,
+        COMMAND_TOGGLE_ORIENTATION,
+        COMMAND_ADD_PAGE,
+        COMMAND_REMOVE_PAGE,
+        COMMAND_EXPORT_PDF,
+        COMMAND_TOGGLE_CELL_INCLUSION,
+        COMMAND_MARK_AS_EXCEL,
+        COMMAND_CLEAR_EXCEL,
+        COMMAND_SHOW_INFO
+      ]) {
+        palette.addItem({ command, category });
+      }
+    }
 
     notebooks.widgetAdded.connect((_, panel) => attachNotebook(panel));
     for (const panel of notebooks.filter(() => true)) {

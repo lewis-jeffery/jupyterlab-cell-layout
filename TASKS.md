@@ -1,6 +1,6 @@
 # JupyterLab Cell Layout — Task List
 
-_Last updated: 2026-04-26 (smart alignment guides)_
+_Last updated: 2026-04-26 (Excel range view — Phase 1)_
 
 Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · ⏸ deferred
 
@@ -26,6 +26,14 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 **Link-click fix:** #28 — markdown links navigate from summary view and PDF annotations are clickable. Root cause was our own drag handler calling `preventDefault()` on pointerdown, which suppressed the synthesized click event for descendants; fix skips drag init when pointerdown lands on a navigable anchor.
 
 **Smart alignment guides:** #30 — during drag and resize, snap to nearby cell edges and centres, plus active-page edges and centres. 2 mm tolerance. Same-page only. Smart-guide snap takes precedence over the grid; falls back to grid when no smart match. User-configurable via the `smartGuides` setting (default on). Resize snaps the moving edge only; centre candidates are excluded for resize.
+
+**Excel range view — Phase 1:** #31 — a layout cell can mirror an open Excel workbook's named range via xlwings. Read-only, manual refresh. Comm bridge between frontend and a kernel-side helper (`jupyterlab_cell_layout.excel_bridge.register()`). Layout metadata gains `cells[*].excel = { workbook, sheet, range }`. Command palette: "Mark active cell as Excel range view" prompts for the three values; "Clear Excel range link" reverts.
+
+⏳ **Excel — future phases (not started):**
+- **#32** Phase 2: editable sub-ranges (write back via xlwings on commit).
+- **#33** Phase 3: live sync via 1 s poll + diff push.
+- **#34** Phase 4: formatting passthrough (colours, bold, number formats, merged cells).
+- **#35** Phase 5: robustness (Excel-not-running affordance, debounced concurrent edits).
 
 ## ⏸ Deferred
 

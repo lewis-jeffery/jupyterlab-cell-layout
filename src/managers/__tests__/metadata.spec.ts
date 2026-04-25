@@ -206,6 +206,44 @@ describe('normalizeCell', () => {
     });
     expect(cell?.outputs[0].enabled).toBe(false);
   });
+
+  it('preserves a complete excel link', () => {
+    const cell = normalizeCell({
+      excel: { workbook: '/x/data.xlsx', sheet: 'Sheet1', range: 'design' }
+    });
+    expect(cell?.excel).toEqual({
+      workbook: '/x/data.xlsx',
+      sheet: 'Sheet1',
+      range: 'design'
+    });
+  });
+
+  it('drops an excel link missing required fields', () => {
+    const cell = normalizeCell({
+      excel: { workbook: 'data.xlsx', sheet: 'Sheet1' }
+    });
+    expect(cell?.excel).toBeUndefined();
+  });
+
+  it('trims whitespace in excel link fields', () => {
+    const cell = normalizeCell({
+      excel: { workbook: ' a.xlsx ', sheet: ' s ', range: ' r ' }
+    });
+    expect(cell?.excel).toEqual({ workbook: 'a.xlsx', sheet: 's', range: 'r' });
+  });
+
+  it('rejects non-string excel field values', () => {
+    const cell = normalizeCell({
+      excel: { workbook: 1, sheet: 2, range: 3 }
+    });
+    expect(cell?.excel).toBeUndefined();
+  });
+
+  it('omits the excel field entirely when not set', () => {
+    const cell = normalizeCell({});
+    expect(cell).not.toBeNull();
+    expect('excel' in (cell as object)).toBe(false);
+  });
 });
 
 describe('defaults', () => {
