@@ -1,8 +1,26 @@
+import type {
+  IGuideLine,
+  IRect,
+  ISnapResult
+} from './alignment-guides';
 import type { IPosition } from '../managers/metadata';
+import type { ResizeHandle } from './resizable';
 import { mmToPx, pxToMm, snapToGrid } from './units';
 
 export interface IDragController {
   dispose(): void;
+}
+
+export interface ISnapHandler {
+  computeDrag(rect: IRect): ISnapResult;
+  computeResize(rect: IRect, handle: ResizeHandle): ISnapResult;
+  showGuides(guides: IGuideLine[]): void;
+}
+
+export interface IDragOptions {
+  getGridSnapMm?: () => number;
+  onInteract?: () => void;
+  snapHandler?: ISnapHandler;
 }
 
 function roundMm(v: number): number {
@@ -13,8 +31,7 @@ export function enableDrag(
   node: HTMLElement,
   getInitialPositionMm: () => IPosition,
   onPositionChange: (posMm: IPosition) => void,
-  getGridSnapMm?: () => number,
-  onInteract?: () => void
+  options: IDragOptions = {}
 ): IDragController {
   let startClientX = 0;
   let startClientY = 0;
@@ -26,7 +43,18 @@ export function enableDrag(
     if (e.button !== 0) {
       return;
     }
-    onInteract?.();
+    // If the user pressed on a navigable anchor, let the browser handle the
+    // click. Calling preventDefault on pointerdown suppresses the synthesized
+    // click event for any descendant, which otherwise blocks link navigation.
+    const target = e.target as Element | null;
+    const anchor = target?.closest?.('a');
+    if (anchor) {
+      const href = anchor.getAttribute('href');
+      if (href && /^(https?|mailto|ftp):/i.test(href)) {
+        return;
+      }
+    }
+    options.onInteract?.();
     dragging = true;
     activePointerId = e.pointerId;
     startClientX = e.clientX;
@@ -42,23 +70,56 @@ export function enableDrag(
     e.stopPropagation();
   };
 
-  const currentDeltaMm = (e: PointerEvent): IPosition => {
-    const dxPx = e.clientX - startClientX;
-    const dyPx = e.clientY - startClientY;
-    const snap = getGridSnapMm?.() ?? 0;
+  const rawDeltaMm = (e: PointerEvent): IPosition => {
     return {
-      x: Math.max(0, snapToGrid(startMm.x + pxToMm(dxPx), snap)),
-      y: Math.max(0, snapToGrid(startMm.y + pxToMm(dyPx), snap))
+      x: Math.max(0, startMm.x + pxToMm(e.clientX - startClientX)),
+      y: Math.max(0, startMm.y + pxToMm(e.clientY - startClientY))
     };
+  };
+
+  const applySnaps = (
+    raw: IPosition
+  ): { pos: IPosition; guides: IGuideLine[] } => {
+    let guides: IGuideLine[] = [];
+    let snappedX = false;
+    let snappedY = false;
+    let pos: IPosition = raw;
+    if (options.snapHandler) {
+      const widthMm = pxToMm(node.offsetWidth);
+      const heightMm = pxToMm(node.offsetHeight);
+      const result = options.snapHandler.computeDrag({
+        x: raw.x,
+        y: raw.y,
+        width: widthMm,
+        height: heightMm
+      });
+      snappedX = result.snapped.x;
+      snappedY = result.snapped.y;
+      guides = result.guides;
+      if (snappedX) {
+        pos = { x: result.rect.x, y: pos.y };
+      }
+      if (snappedY) {
+        pos = { x: pos.x, y: result.rect.y };
+      }
+    }
+    const grid = options.getGridSnapMm?.() ?? 0;
+    pos = {
+      x: snappedX ? pos.x : Math.max(0, snapToGrid(pos.x, grid)),
+      y: snappedY ? pos.y : Math.max(0, snapToGrid(pos.y, grid))
+    };
+    return { pos, guides };
   };
 
   const onPointerMove = (e: PointerEvent) => {
     if (!dragging || e.pointerId !== activePointerId) {
       return;
     }
-    const mm = currentDeltaMm(e);
-    node.style.left = `${mmToPx(mm.x)}px`;
-    node.style.top = `${mmToPx(mm.y)}px`;
+    const raw = rawDeltaMm(e);
+    const { pos, guides } = applySnaps(raw);
+    node.style.left = `${mmToPx(pos.x)}px`;
+    node.style.top = `${mmToPx(pos.y)}px`;
+    options.snapHandler?.showGuides(guides);
   };
 
   const endDrag = (e: PointerEvent) => {
@@ -66,8 +127,9 @@ export function enableDrag(
       return;
     }
     dragging = false;
-    const mm = currentDeltaMm(e);
-    const rounded: IPosition = { x: roundMm(mm.x), y: roundMm(mm.y) };
+    const raw = rawDeltaMm(e);
+    const { pos } = applySnaps(raw);
+    const rounded: IPosition = { x: roundMm(pos.x), y: roundMm(pos.y) };
     try {
       node.releasePointerCapture(e.pointerId);
     } catch {
@@ -75,6 +137,7 @@ export function enableDrag(
     }
     node.classList.remove('jp-CellLayout-dragging');
     activePointerId = null;
+    options.snapHandler?.showGuides([]);
     onPositionChange(rounded);
   };
 

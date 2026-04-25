@@ -37,11 +37,13 @@ const CSS_SUMMARY_MODE = 'jp-CellLayout-summaryMode';
 interface IUserDefaults {
   pageSize: PageSize;
   orientation: PageOrientation;
+  smartGuides: boolean;
 }
 
 const userDefaults: IUserDefaults = {
   pageSize: 'A4',
-  orientation: 'portrait'
+  orientation: 'portrait',
+  smartGuides: true
 };
 
 interface INotebookState {
@@ -237,7 +239,8 @@ function seedDefaultsIfEmpty(panel: NotebookPanel, manager: MetadataManager): vo
     settings: {
       ...layout.settings,
       page_size: userDefaults.pageSize,
-      orientation: userDefaults.orientation
+      orientation: userDefaults.orientation,
+      smart_guides: userDefaults.smartGuides
     }
   }));
 }
@@ -354,11 +357,15 @@ function readUserDefaults(settings: ISettingRegistryType.ISettings): void {
   const composite = settings.composite;
   const pageSize = composite.pageSize;
   const orientation = composite.orientation;
+  const smartGuides = composite.smartGuides;
   if (pageSize === 'A3' || pageSize === 'A4') {
     userDefaults.pageSize = pageSize;
   }
   if (orientation === 'landscape' || orientation === 'portrait') {
     userDefaults.orientation = orientation;
+  }
+  if (typeof smartGuides === 'boolean') {
+    userDefaults.smartGuides = smartGuides;
   }
 }
 
@@ -454,42 +461,6 @@ const plugin: JupyterFrontEndPlugin<void> = {
       },
       isEnabled: () => notebooks.currentWidget !== null
     });
-
-    // Best-effort markdown-link navigation. Multiple attempts (in-cell
-    // capture-phase click handler, deep-clone-and-replace, document
-    // capture-phase click, document capture-phase mousedown) have not
-    // delivered consistent navigation on user systems — JupyterLab/Lumino
-    // appears to swallow these events for content inside our overlay
-    // canvas in some configurations. Tracked as deferred task #28. The
-    // mousedown listener below is left in place because it costs almost
-    // nothing and may navigate successfully on some setups.
-    document.addEventListener(
-      'mousedown',
-      e => {
-        if ((e as MouseEvent).button !== 0) {
-          return;
-        }
-        const target = e.target as HTMLElement | null;
-        if (!target) {
-          return;
-        }
-        const anchor = target.closest('a');
-        if (!anchor) {
-          return;
-        }
-        if (!anchor.closest('.jp-CellLayout-md')) {
-          return;
-        }
-        const href = anchor.getAttribute('href');
-        if (!href || !/^(https?|mailto|ftp):/i.test(href)) {
-          return;
-        }
-        e.preventDefault();
-        e.stopPropagation();
-        window.open(href, '_blank', 'noopener,noreferrer');
-      },
-      { capture: true }
-    );
 
     notebooks.widgetAdded.connect((_, panel) => attachNotebook(panel));
     for (const panel of notebooks.filter(() => true)) {

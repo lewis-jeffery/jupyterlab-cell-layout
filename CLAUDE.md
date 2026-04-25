@@ -21,13 +21,12 @@ Engineering design documentation where:
 | 1 | Core infrastructure, mode toggle, metadata persistence, basic summary | ✅ Delivered | All FR1, FR3, FR4 acceptance criteria met. |
 | 2 | Drag, resize, z-index, A/B routing, grid snap | ✅ Delivered | A/B override UI deferred (see FR3 below). |
 | 3 | PDF export, polish, docs | ✅ Core delivered | Multi-page canvas + page-aware PDF export with searchable text overlay + clickable link annotations. Cover sheet + summary-mode ToC deferred. |
-| 4 | Templates, bulk ops, advanced keyboard | 🔒 Not started | Spec's "grid snapping" item already shipped in Phase 2. |
+| 4 | Templates, bulk ops, advanced keyboard | 🟡 Partial | Smart alignment guides shipped (was on the Phase 4 backlog). Templates, bulk ops, full keyboard nav not started. Spec's "grid snapping" item already shipped in Phase 2. |
 
 **Deferred or known-limitation items (kept on the task list):**
 - **#26** PDF cover sheet (title page + optional ToC).
 - **#27** Summary-mode ToC sidebar.
-- **#28** Markdown links don't navigate from summary view; the PDF link annotations are wired but rest on the same DOM event path that JupyterLab/Lumino is suppressing. Four fixes attempted, none received any event. Best-effort document-level mousedown listener stays in code.
-- Vector-text PDF (rather than bitmap+invisible-text) — the searchable text overlay covers the main pain point but vector PDF would be smaller and would also fix the link-click bug.
+- Vector-text PDF (rather than bitmap+invisible-text) — the searchable text overlay covers the main pain point but vector PDF would be smaller and produce sharper text.
 - "Delete a specific page" command (currently only the last page can be removed).
 
 ## Core Requirements
@@ -97,8 +96,8 @@ _Implemented as:_
 - **PDF page size matches canvas page size** (A4 / A3, portrait / landscape).
 - **Reading order**: cells flow left-to-right, top-to-bottom (row-major with a y-tolerance for cells on the same visual row). An optional per-cell counter badge (schema field `showReadingOrderBadges`, default true) makes ambiguous cases visible.
 - **Page-break straddle**: before capture, any cell whose bounding box would cross a page boundary is temporarily shifted down to the top of the next page. Cells already on the last page or taller than a single page are not pushed.
-- **Link annotations**: anchor tags in the rendered DOM are overlaid as PDF link annotations on the right page, so URLs are clickable in the PDF reader (note: clicking links in summary view is currently broken — see #28).
-- **Trade-off**: text glyphs in the visible PDF are rasterised. The invisible overlay covers search/selection. A future vector-text rewrite would also fix link clicks and reduce file size.
+- **Link annotations**: anchor tags in the rendered DOM are overlaid as PDF link annotations on the right page, so URLs are clickable in the PDF reader. Clicking links in summary view also navigates (opens in a new tab).
+- **Trade-off**: text glyphs in the visible PDF are rasterised. The invisible overlay covers search/selection. A future vector-text rewrite would reduce file size and produce sharper text.
 - **Filename** defaults to `{notebook-basename}.pdf`.
 
 ### Technical Requirements
@@ -127,7 +126,8 @@ _Updated to reflect the actual schema as of v0.1.0:_
         "page_count": 1,
         "grid_snap": 5,
         "default_summary_lines": 3,
-        "notebook_mode": "edit"
+        "notebook_mode": "edit",
+        "smart_guides": true
       },
       "cells": {
         "{cell-id}": {
@@ -182,6 +182,7 @@ _Updated to reflect the actual schema as of v0.1.0:_
 | `input.auto_fit` | If `true`, the next markdown render measures rendered content and resizes the slot. Flips to `false` after first fit or manual resize. |
 | `outputs[].auto_fit` | Same, for matplotlib / image outputs in slot B. |
 | `settings.grid_snap` | In **millimetres** (default 5). The original spec implied pixels; reinterpreted as mm consistent with the rest of the geometry. |
+| `settings.smart_guides` | Boolean (default `true`). When on, drag and resize show alignment guides and snap to nearby cell edges/centres and active-page edges/centres within a 2 mm tolerance. Smart-guide snap takes precedence over the grid; falls back to grid when no smart match. |
 
 All position and size values are in **mm** (converted to CSS px at 96 DPI for rendering, to pt for PDF).
 
@@ -339,8 +340,9 @@ interface INotebookLayout {
 - **Polish round 3**: auto-grow page count, toolbar button spacing.
 - 118 Jest tests passing.
 
-### Phase 4: Advanced Features — 🔒 Not started
-The original spec listed: grid snapping (already shipped in Phase 2), layout templates, bulk operations, full keyboard navigation. Plus the deferred items called out in the Implementation Status table at the top of this document.
+### Phase 4: Advanced Features — 🟡 Partial
+- **Smart alignment guides** ✅ shipped: during drag and resize, snap to nearby cell edges and centres plus active-page edges and centres within a 2 mm tolerance. Same-page only — no cross-page snapping. Smart-guide snap takes precedence over the grid; falls back to grid when no smart match. User-configurable via the `smartGuides` setting (default on). Resize snaps the moving edge only and excludes centre candidates — aligning a moving edge to a sibling centre rarely matches intent.
+- **Layout templates**, **bulk operations**, **full keyboard navigation**: not started. Plus the deferred items called out in the Implementation Status table at the top of this document.
 
 ## Technical Specifications
 
@@ -436,7 +438,8 @@ Publishing to PyPI / conda-forge is a future activity; not done in v0.1.0.
     "orientation": "portrait",
     "defaultSummaryLines": 3,
     "gridSnap": 5,
-    "showReadingOrderBadges": true
+    "showReadingOrderBadges": true,
+    "smartGuides": true
   }
 }
 ```
@@ -467,7 +470,7 @@ These are the JL global defaults seeded into a brand-new notebook's metadata; ex
 ### Technical Risks (post-implementation notes)
 - **JupyterLab API Changes**: pinning to `^4.3.0` keeps us on a single major. Galata's path handling already bit us in the test-tooling layer.
 - **PDF Export Complexity**: started with bitmap (simple), added invisible text layer (still simple). Vector-text would be the next jump and would also fix the link-click regression.
-- **Lumino event-handling regressions**: spotted during the markdown-link work — JL's overlay/widget event dispatch suppresses click events for some content inside our canvas. Workaround attempts to date have failed; tracked as #28.
+- **Pointerdown vs click interaction**: drag handlers that call `preventDefault()` on `pointerdown` for a node also suppress the synthesized `click` event for every descendant — this broke markdown-link navigation (#28, fixed). Anchors with navigable hrefs now bypass drag init in `draggable.ts`.
 
 ### User Experience Risks
 - **Mode Confusion**: addressed by notebook-wide toggle and labelled toolbar buttons.
@@ -478,7 +481,7 @@ These are the JL global defaults seeded into a brand-new notebook's metadata; ex
 
 ### Potential Features (still relevant)
 - Layout templates and themes (Phase 4 item).
-- Vector-text PDF (would supersede the invisible-text overlay and fix link clicks).
+- Vector-text PDF (would supersede the invisible-text overlay and produce sharper text).
 - Bulk multi-cell drag (Phase 4 item).
 - Full keyboard navigation parity (Phase 4 item).
 - "Delete a specific page" command for middle-of-document pages.

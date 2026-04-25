@@ -7,14 +7,22 @@ import type { CellCoordinator } from '../managers/cell-coordinator';
 import { OutputProcessor } from '../managers/output-processor';
 import type { ICellLayout, OutputSlotId } from '../managers/metadata';
 
+import type { ISnapHandler } from './draggable';
 import { SummaryInputCell } from './summary-input-cell';
 import { SummaryOutputCell } from './summary-output-cell';
+
+export type SlotKey = 'input' | OutputSlotId;
+
+export interface ISnapHandlerFactory {
+  (cellId: string, slot: SlotKey): ISnapHandler | null;
+}
 
 export interface ISummaryCellOptions {
   displayIndex: number;
   coordinator?: CellCoordinator;
   rendermime?: IRenderMimeRegistry;
   onInteract?: () => void;
+  snapHandlerFactory?: ISnapHandlerFactory;
 }
 
 /**
@@ -36,7 +44,13 @@ export class SummaryCellWidget {
     this._zIndex = layout.input.z_index;
     this.cellId = cellModel.id;
     const id = this.cellId;
-    const { coordinator, rendermime, onInteract, displayIndex } = options;
+    const {
+      coordinator,
+      rendermime,
+      onInteract,
+      displayIndex,
+      snapHandlerFactory
+    } = options;
     const indexLabel = String(displayIndex);
 
     const getGridSnapMm = coordinator
@@ -58,7 +72,8 @@ export class SummaryCellWidget {
           getGridSnapMm,
           onInteract,
           onAutoFit: (size: { width: number; height: number }) =>
-            coordinator.updateInputLayout(id, { size, auto_fit: false })
+            coordinator.updateInputLayout(id, { size, auto_fit: false }),
+          snapHandler: snapHandlerFactory?.(id, 'input') ?? undefined
         }
       : undefined;
     this.input = new SummaryInputCell(cellModel, layout.input, {
@@ -104,7 +119,8 @@ export class SummaryCellWidget {
               coordinator.updateOutputLayout(id, slotId, {
                 size,
                 auto_fit: false
-              })
+              }),
+            snapHandler: snapHandlerFactory?.(id, slotId) ?? undefined
           }
         : undefined;
       const outputCell = new SummaryOutputCell(outLayout, items, {

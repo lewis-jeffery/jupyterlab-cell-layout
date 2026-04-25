@@ -21,6 +21,8 @@ export const DEFAULT_PAGE_SIZE: PageSize = 'A4';
 export const DEFAULT_PAGE_ORIENTATION: PageOrientation = 'portrait';
 export const DEFAULT_GRID_SNAP_MM = 5;
 export const DEFAULT_SUMMARY_LINES = 3;
+export const DEFAULT_SMART_GUIDES = true;
+export const SMART_GUIDES_TOLERANCE_MM = 2;
 
 export interface IPosition {
   x: number;
@@ -66,6 +68,7 @@ export interface ILayoutSettings {
   grid_snap: number;
   default_summary_lines: number;
   notebook_mode: NotebookMode;
+  smart_guides: boolean;
 }
 
 export const DEFAULT_PAGE_COUNT = 1;
@@ -85,7 +88,8 @@ export function defaultSettings(): ILayoutSettings {
     page_count: DEFAULT_PAGE_COUNT,
     grid_snap: DEFAULT_GRID_SNAP_MM,
     default_summary_lines: DEFAULT_SUMMARY_LINES,
-    notebook_mode: 'edit'
+    notebook_mode: 'edit',
+    smart_guides: DEFAULT_SMART_GUIDES
   };
 }
 
@@ -287,13 +291,18 @@ export function normalizeSettings(raw: unknown): ILayoutSettings {
     raw.page_count >= 1
       ? Math.min(MAX_PAGE_COUNT, Math.floor(raw.page_count))
       : fallback.page_count;
+  const smart_guides =
+    typeof raw.smart_guides === 'boolean'
+      ? raw.smart_guides
+      : fallback.smart_guides;
   return {
     page_size,
     orientation,
     page_count,
     grid_snap,
     default_summary_lines,
-    notebook_mode
+    notebook_mode,
+    smart_guides
   };
 }
 

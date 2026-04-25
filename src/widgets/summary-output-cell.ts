@@ -2,7 +2,11 @@ import type * as nbformat from '@jupyterlab/nbformat';
 import { Widget } from '@lumino/widgets';
 
 import type { IOutputLayout, IPosition, ISize } from '../managers/metadata';
-import { enableDrag, type IDragController } from './draggable';
+import {
+  enableDrag,
+  type IDragController,
+  type ISnapHandler
+} from './draggable';
 import { enableResize, type IResizeController } from './resizable';
 import { coerceText, mmToPx, pxToMm } from './units';
 
@@ -12,6 +16,7 @@ export interface IOutputLayoutCallbacks {
   getGridSnapMm?: () => number;
   onInteract?: () => void;
   onAutoFit?: (size: ISize) => void;
+  snapHandler?: ISnapHandler;
 }
 
 export interface IOutputCellOptions {
@@ -52,8 +57,11 @@ export class SummaryOutputCell extends Widget {
           this._outputLayout = { ...this._outputLayout, position: pos };
           callbacks.onPositionChange(pos);
         },
-        callbacks.getGridSnapMm,
-        callbacks.onInteract
+        {
+          getGridSnapMm: callbacks.getGridSnapMm,
+          onInteract: callbacks.onInteract,
+          snapHandler: callbacks.snapHandler
+        }
       );
       this._resizeCtl = enableResize(
         this.node,
@@ -71,7 +79,8 @@ export class SummaryOutputCell extends Widget {
         },
         {
           getGridSnapMm: callbacks.getGridSnapMm,
-          onInteract: callbacks.onInteract
+          onInteract: callbacks.onInteract,
+          snapHandler: callbacks.snapHandler
         }
       );
     }

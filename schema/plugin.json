@@ -48,6 +48,12 @@
       "default": true,
       "title": "Show reading-order badges",
       "description": "Show a small numbered badge on each cell in summary mode indicating its PDF export reading order (left-to-right, top-to-bottom)."
+    },
+    "smartGuides": {
+      "type": "boolean",
+      "default": true,
+      "title": "Smart alignment guides",
+      "description": "When dragging or resizing a cell, show alignment guides and snap to nearby cell edges, centres, and page edges. Smart-guide snap takes precedence over the grid snap when within tolerance (2 mm)."
     }
   },
   "additionalProperties": false

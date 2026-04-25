@@ -5,11 +5,23 @@ import { CellCoordinator, pageBoundsFor } from '../managers/cell-coordinator';
 import {
   type MetadataManager,
   type PageOrientation,
-  type PageSize
+  type PageSize,
+  SMART_GUIDES_TOLERANCE_MM
 } from '../managers/metadata';
 
-import { SummaryCellWidget } from './summary-cell';
-import { mmToPx } from './units';
+import {
+  computeDragSnap,
+  computeResizeSnap,
+  type IGuideLine,
+  type IPageBox,
+  type IRect
+} from './alignment-guides';
+import type { ISnapHandler } from './draggable';
+import type { ResizeHandle } from './resizable';
+import { SummaryCellWidget, type SlotKey } from './summary-cell';
+import { mmToPx, pxToMm } from './units';
+
+const SNAP_MIN_SIZE = { width: 20, height: 15 };
 
 export class LayoutCanvas extends Widget {
   private _cells: SummaryCellWidget[] = [];
@@ -74,13 +86,100 @@ export class LayoutCanvas extends Widget {
         displayIndex: entry.index + 1,
         coordinator: this.coordinator,
         rendermime: this.rendermime,
-        onInteract: () => this.bringCellToFront(cellId)
+        onInteract: () => this.bringCellToFront(cellId),
+        snapHandlerFactory: (id, slot) => this._snapHandlerFor(id, slot)
       });
       this._cells.push(widget);
       this._groups.set(cellId, widget);
       for (const w of widget.widgets()) {
         this._page.appendChild(w.node);
       }
+    }
+  }
+
+  private _snapHandlerFor(cellId: string, slot: SlotKey): ISnapHandler | null {
+    const excludeKey = `${cellId}:${slot}`;
+    const collect = (): IRect[] => this._collectSnapRects(excludeKey);
+    const getPageBox = (): IPageBox => this._pageBox();
+    return {
+      computeDrag: (rect: IRect) =>
+        computeDragSnap(
+          rect,
+          collect(),
+          getPageBox(),
+          this._snapTolerance()
+        ),
+      computeResize: (rect: IRect, handle: ResizeHandle) =>
+        computeResizeSnap(
+          rect,
+          handle,
+          collect(),
+          getPageBox(),
+          this._snapTolerance(),
+          SNAP_MIN_SIZE
+        ),
+      showGuides: (guides: IGuideLine[]) => this._renderGuides(guides)
+    };
+  }
+
+  private _snapTolerance(): number {
+    return this.manager.read().settings.smart_guides
+      ? SMART_GUIDES_TOLERANCE_MM
+      : 0;
+  }
+
+  private _pageBox(): IPageBox {
+    const settings = this.manager.read().settings;
+    const bounds = pageBoundsFor(settings);
+    return {
+      width: bounds.width,
+      height: bounds.height,
+      pageCount: settings.page_count
+    };
+  }
+
+  private _collectSnapRects(excludeKey: string): IRect[] {
+    const rects: IRect[] = [];
+    const nodes = this._page.querySelectorAll(
+      '.jp-CellLayout-input, .jp-CellLayout-output'
+    );
+    for (const node of Array.from(nodes)) {
+      const el = node as HTMLElement;
+      const cellId = el.dataset.cellId ?? '';
+      const slot = el.dataset.slot ?? '';
+      const key = `${cellId}:${slot}`;
+      if (key === excludeKey || cellId === '' || slot === '') {
+        continue;
+      }
+      rects.push({
+        x: pxToMm(el.offsetLeft),
+        y: pxToMm(el.offsetTop),
+        width: pxToMm(el.offsetWidth),
+        height: pxToMm(el.offsetHeight)
+      });
+    }
+    return rects;
+  }
+
+  private _renderGuides(guides: IGuideLine[]): void {
+    for (const old of Array.from(
+      this._page.querySelectorAll('.jp-CellLayout-snapGuide')
+    )) {
+      old.remove();
+    }
+    for (const g of guides) {
+      const div = document.createElement('div');
+      div.className = `jp-CellLayout-snapGuide jp-CellLayout-snapGuide-${g.axis}`;
+      if (g.axis === 'x') {
+        div.style.left = `${mmToPx(g.position)}px`;
+        div.style.top = `${mmToPx(g.start)}px`;
+        div.style.height = `${mmToPx(g.end - g.start)}px`;
+      } else {
+        div.style.top = `${mmToPx(g.position)}px`;
+        div.style.left = `${mmToPx(g.start)}px`;
+        div.style.width = `${mmToPx(g.end - g.start)}px`;
+      }
+      this._page.appendChild(div);
     }
   }
 
@@ -117,7 +216,8 @@ export class LayoutCanvas extends Widget {
       page_count: 1,
       grid_snap: 0,
       default_summary_lines: 3,
-      notebook_mode: 'edit'
+      notebook_mode: 'edit',
+      smart_guides: false
     });
     const pageCount = Math.max(1, Math.floor(settings.page_count));
     const pageHeightPx = mmToPx(bounds.height);

@@ -40,10 +40,26 @@
   z-index: 1;
 }
 
+.jp-CellLayout-snapGuide {
+  position: absolute;
+  pointer-events: none;
+  background: var(--jp-warn-color1, #ff5252);
+  z-index: 200;
+}
+
+.jp-CellLayout-snapGuide-x {
+  width: 1px;
+}
+
+.jp-CellLayout-snapGuide-y {
+  height: 1px;
+}
+
 /* Hide editor chrome during PDF export so the rendered bitmap is clean.
  * Page-number badges intentionally stay visible — useful in the printed PDF. */
 .jp-CellLayout-exporting .jp-CellLayout-pageBreak,
-.jp-CellLayout-exporting .jp-CellLayout-handle {
+.jp-CellLayout-exporting .jp-CellLayout-handle,
+.jp-CellLayout-exporting .jp-CellLayout-snapGuide {
   display: none !important;
 }
 

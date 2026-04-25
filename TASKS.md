@@ -1,6 +1,6 @@
 # JupyterLab Cell Layout — Task List
 
-_Last updated: 2026-04-26_
+_Last updated: 2026-04-26 (smart alignment guides)_
 
 Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · ⏸ deferred
 
@@ -8,7 +8,7 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 
 - **Phase 1** ✅ fully delivered (core infrastructure)
 - **Phase 2** ✅ fully delivered (drag, resize, z-index, grid snap)
-- **Phase 3** ✅ core delivered (multi-page canvas + searchable PDF export). Optional sub-tasks (#26 cover sheet, #27 ToC sidebar) and one bug (#28 link clicks) deferred.
+- **Phase 3** ✅ delivered (multi-page canvas + searchable PDF export + clickable markdown links). Optional sub-tasks (#26 cover sheet, #27 ToC sidebar) deferred.
 - **Phase 4** 🔒 not started
 
 ## ✅ Completed
@@ -23,11 +23,14 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 
 **Phase 3 (multi-page canvas + PDF export, including searchable text overlay):** #14, #25, #29
 
+**Link-click fix:** #28 — markdown links navigate from summary view and PDF annotations are clickable. Root cause was our own drag handler calling `preventDefault()` on pointerdown, which suppressed the synthesized click event for descendants; fix skips drag init when pointerdown lands on a navigable anchor.
+
+**Smart alignment guides:** #30 — during drag and resize, snap to nearby cell edges and centres, plus active-page edges and centres. 2 mm tolerance. Same-page only. Smart-guide snap takes precedence over the grid; falls back to grid when no smart match. User-configurable via the `smartGuides` setting (default on). Resize snaps the moving edge only; centre candidates are excluded for resize.
+
 ## ⏸ Deferred
 
 - **#26** PDF cover sheet (title, author, date, optional ToC) — useful for large/formal documents; revisit when needed.
 - **#27** Summary-mode ToC sidebar — depends on #26.
-- **#28** Markdown link clicks don't navigate from summary view (and PDF link annotations rest on the same suppressed event path). Four fixes attempted; document-level handlers don't fire — JupyterLab/Lumino is absorbing pointer/click events for content inside the overlay canvas. Best-effort document-level mousedown listener stays in code. Vector-text PDF would also fix the PDF half of this issue.
 
 ## 🔒 Blocked
 

@@ -3,7 +3,11 @@ import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 
 import type { IInputLayout, IPosition, ISize } from '../managers/metadata';
-import { enableDrag, type IDragController } from './draggable';
+import {
+  enableDrag,
+  type IDragController,
+  type ISnapHandler
+} from './draggable';
 import { enableResize, type IResizeController } from './resizable';
 import { coerceText, mmToPx, pxToMm } from './units';
 
@@ -37,6 +41,7 @@ export interface IInputLayoutCallbacks {
   getGridSnapMm?: () => number;
   onInteract?: () => void;
   onAutoFit?: (size: ISize) => void;
+  snapHandler?: ISnapHandler;
 }
 
 export interface IInputCellOptions {
@@ -100,8 +105,11 @@ export class SummaryInputCell extends Widget {
           this._inputLayout = { ...this._inputLayout, position: pos };
           callbacks.onPositionChange(pos);
         },
-        callbacks.getGridSnapMm,
-        callbacks.onInteract
+        {
+          getGridSnapMm: callbacks.getGridSnapMm,
+          onInteract: callbacks.onInteract,
+          snapHandler: callbacks.snapHandler
+        }
       );
       this._resizeCtl = enableResize(
         this.node,
@@ -119,7 +127,8 @@ export class SummaryInputCell extends Widget {
         },
         {
           getGridSnapMm: callbacks.getGridSnapMm,
-          onInteract: callbacks.onInteract
+          onInteract: callbacks.onInteract,
+          snapHandler: callbacks.snapHandler
         }
       );
     }
@@ -194,15 +203,9 @@ export class SummaryInputCell extends Widget {
       await renderer.renderModel(model);
       renderer.addClass('jp-CellLayout-md');
       body.appendChild(renderer.node);
-      // JL's rendermime may attach its own click handlers to anchors during
-      // render that swallow external navigation. Deep-clone each <a> and
-      // replace the original — the clone has no inherited event listeners,
-      // so default browser behaviour (target=_blank navigation) takes over.
       for (const a of Array.from(renderer.node.querySelectorAll('a'))) {
-        const clone = a.cloneNode(true) as HTMLAnchorElement;
-        clone.setAttribute('target', '_blank');
-        clone.setAttribute('rel', 'noopener noreferrer');
-        a.replaceWith(clone);
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
       }
       await waitForImages(renderer.node);
       this._maybeAutoFit(renderer.node);

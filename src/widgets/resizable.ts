@@ -1,4 +1,6 @@
+import type { IGuideLine, IRect } from './alignment-guides';
 import type { IPosition, ISize } from '../managers/metadata';
+import type { ISnapHandler } from './draggable';
 import { mmToPx, pxToMm, snapToGrid } from './units';
 
 export type ResizeHandle =
@@ -35,6 +37,7 @@ export interface IResizeOptions {
   minSize?: ISize;
   getGridSnapMm?: () => number;
   onInteract?: () => void;
+  snapHandler?: ISnapHandler;
 }
 
 const HANDLE_CONFIG: Record<
@@ -140,7 +143,9 @@ export function enableResize(
     rootNode.style.height = `${mmToPx(geom.size.height)}px`;
   };
 
-  const computeCurrent = (e: PointerEvent): IGeometry | null => {
+  const computeCurrent = (
+    e: PointerEvent
+  ): { geom: IGeometry; guides: IGuideLine[] } | null => {
     if (!startGeom || !activeHandle) {
       return null;
     }
@@ -154,29 +159,68 @@ export function enableResize(
       deltaMm,
       minSize
     );
-    const snap = options.getGridSnapMm?.() ?? 0;
-    if (snap <= 0) {
-      return raw;
-    }
-    return {
-      position: {
-        x: Math.max(0, snapToGrid(raw.position.x, snap)),
-        y: Math.max(0, snapToGrid(raw.position.y, snap))
-      },
-      size: {
-        width: Math.max(minSize.width, snapToGrid(raw.size.width, snap)),
-        height: Math.max(minSize.height, snapToGrid(raw.size.height, snap))
+
+    let geom = raw;
+    let guides: IGuideLine[] = [];
+    let snappedX = false;
+    let snappedY = false;
+    if (options.snapHandler) {
+      const movingRect: IRect = {
+        x: geom.position.x,
+        y: geom.position.y,
+        width: geom.size.width,
+        height: geom.size.height
+      };
+      const snap = options.snapHandler.computeResize(movingRect, activeHandle);
+      snappedX = snap.snapped.x;
+      snappedY = snap.snapped.y;
+      if (snappedX || snappedY) {
+        geom = {
+          position: {
+            x: snappedX ? snap.rect.x : geom.position.x,
+            y: snappedY ? snap.rect.y : geom.position.y
+          },
+          size: {
+            width: snappedX ? snap.rect.width : geom.size.width,
+            height: snappedY ? snap.rect.height : geom.size.height
+          }
+        };
+        guides = snap.guides;
       }
-    };
+    }
+
+    const grid = options.getGridSnapMm?.() ?? 0;
+    if (grid > 0) {
+      geom = {
+        position: {
+          x: snappedX
+            ? geom.position.x
+            : Math.max(0, snapToGrid(geom.position.x, grid)),
+          y: snappedY
+            ? geom.position.y
+            : Math.max(0, snapToGrid(geom.position.y, grid))
+        },
+        size: {
+          width: snappedX
+            ? geom.size.width
+            : Math.max(minSize.width, snapToGrid(geom.size.width, grid)),
+          height: snappedY
+            ? geom.size.height
+            : Math.max(minSize.height, snapToGrid(geom.size.height, grid))
+        }
+      };
+    }
+    return { geom, guides };
   };
 
   const onPointerMove = (e: PointerEvent) => {
     if (activeHandle === null || e.pointerId !== activePointerId) {
       return;
     }
-    const geom = computeCurrent(e);
-    if (geom) {
-      applyGeom(geom);
+    const result = computeCurrent(e);
+    if (result) {
+      applyGeom(result.geom);
+      options.snapHandler?.showGuides(result.guides);
     }
   };
 
@@ -184,7 +228,7 @@ export function enableResize(
     if (activeHandle === null || e.pointerId !== activePointerId) {
       return;
     }
-    const geom = computeCurrent(e);
+    const result = computeCurrent(e);
     const target = e.currentTarget as HTMLElement;
     try {
       target.releasePointerCapture(e.pointerId);
@@ -195,7 +239,9 @@ export function enableResize(
     activeHandle = null;
     activePointerId = null;
     startGeom = null;
-    if (geom) {
+    options.snapHandler?.showGuides([]);
+    if (result) {
+      const geom = result.geom;
       onGeometryChange({
         position: { x: roundMm(geom.position.x), y: roundMm(geom.position.y) },
         size: {
