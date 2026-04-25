@@ -62,6 +62,7 @@ export async function exportToPdf(
   pageEl.classList.add(EXPORTING_CLASS);
   let fullCanvas: HTMLCanvasElement;
   let linkRects: ILinkRect[];
+  let textRuns: ITextRun[];
   try {
     fullCanvas = await html2canvas(pageEl, {
       scale: CAPTURE_SCALE,
@@ -69,9 +70,10 @@ export async function exportToPdf(
       useCORS: true,
       logging: false
     });
-    // Capture link positions while straddle adjustments are still applied,
-    // so the rect's Y offset matches the bitmap.
+    // Collect link positions and text runs while straddle adjustments are
+    // still applied, so the rect Y offsets match the bitmap.
     linkRects = collectLinkRects(pageEl);
+    textRuns = collectTextRuns(pageEl);
   } finally {
     pageEl.classList.remove(EXPORTING_CLASS);
     restoreStraddles();
@@ -96,6 +98,30 @@ export async function exportToPdf(
       pdf.addPage();
     }
     pdf.addImage(dataUrl, 'PNG', 0, 0, pageWidthMm, pageHeightMm);
+  }
+
+  // Add invisible text overlay to make the PDF searchable / selectable.
+  // PDF rendering mode 3 emits text into the content stream without painting
+  // any glyphs — search and selection still see it.
+  for (const run of textRuns) {
+    const pageIndex = Math.floor(run.topMm / pageHeightMm);
+    if (pageIndex < 0 || pageIndex >= pageCount) {
+      continue;
+    }
+    pdf.setPage(pageIndex + 1);
+    pdf.setFontSize(run.fontSizePt);
+    const localTopMm = run.topMm - pageIndex * pageHeightMm;
+    // jsPDF text y is the baseline; offset by font size so the invisible
+    // text sits roughly where the visible text is on the bitmap.
+    const baselineYMm = localTopMm + (run.fontSizePt * 25.4) / 72;
+    try {
+      pdf.text(run.text, run.leftMm, baselineYMm, {
+        renderingMode: 'invisible'
+      });
+    } catch {
+      // Some characters can't be encoded in the default Helvetica font
+      // (non-WinAnsi). Skip silently — most text will index correctly.
+    }
   }
 
   // Add link annotations on top of each PDF page so URLs are clickable.
@@ -146,6 +172,84 @@ interface ILinkRect {
   topMm: number;
   widthMm: number;
   heightMm: number;
+}
+
+interface ITextRun {
+  text: string;
+  leftMm: number;
+  topMm: number;
+  fontSizePt: number;
+}
+
+const SKIP_TEXT_FROM_CLASSES = new Set([
+  'jp-CellLayout-pageNumber',
+  'jp-CellLayout-label',
+  'jp-CellLayout-pageBreak'
+]);
+
+/**
+ * Walk the rendered DOM and collect each text node with its on-screen
+ * position relative to the page element. Used to overlay invisible PDF
+ * text on the bitmap so the export is searchable and selectable.
+ *
+ * Skips elements that are pure visual decoration (page-number badges,
+ * cell-label badges) — they're already rasterised in the bitmap and would
+ * duplicate in search results.
+ */
+function collectTextRuns(pageEl: HTMLElement): ITextRun[] {
+  const pageRect = pageEl.getBoundingClientRect();
+  const runs: ITextRun[] = [];
+  const seenParents = new WeakSet<Element>();
+  const textNodes: Text[] = [];
+  const walker = document.createTreeWalker(pageEl, NodeFilter.SHOW_TEXT);
+  let n: Node | null;
+  while ((n = walker.nextNode())) {
+    textNodes.push(n as Text);
+  }
+  for (const tn of textNodes) {
+    const value = tn.nodeValue ?? '';
+    const text = value.replace(/\s+/g, ' ').trim();
+    if (!text) {
+      continue;
+    }
+    const parent = tn.parentElement;
+    if (!parent) {
+      continue;
+    }
+    if (seenParents.has(parent)) {
+      continue;
+    }
+    let skip = false;
+    for (const cls of SKIP_TEXT_FROM_CLASSES) {
+      if (parent.classList.contains(cls) || parent.closest(`.${cls}`)) {
+        skip = true;
+        break;
+      }
+    }
+    if (skip) {
+      continue;
+    }
+    seenParents.add(parent);
+    const rect = parent.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      continue;
+    }
+    const fontSizePx = parseFloat(getComputedStyle(parent).fontSize) || 11;
+    const fontSizePt = (fontSizePx * 72) / 96;
+    // Use the parent's text content (not just this text node) so a paragraph
+    // with inline children gets indexed once as a coherent run.
+    const fullText = (parent.textContent ?? '').replace(/\s+/g, ' ').trim();
+    if (!fullText) {
+      continue;
+    }
+    runs.push({
+      text: fullText,
+      leftMm: pxToMm(rect.left - pageRect.left),
+      topMm: pxToMm(rect.top - pageRect.top),
+      fontSizePt
+    });
+  }
+  return runs;
 }
 
 /**
