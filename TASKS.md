@@ -4,23 +4,11 @@ _Last updated: 2026-04-26_
 
 Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · ⏸ deferred
 
-## 🎯 Milestones
+## 🎯 Phase status
 
-- **Milestone 1**: Rendered Summary View — ✅ done
-- **Milestone 2a**: Draggable cells — ✅ done
-- **Milestone 2b**: Resizable cells — ✅ done
-- **Milestone 2c**: Grid snap + z-index — ✅ done
-- **Polish round 1**: Markdown rendering, image scaling, cell labels, overflow-clip code — ✅ done
-- **Polish round 2**: Auto-fit slots to images, output padding — ✅ done
-- **Milestone 3a**: Multi-page canvas — ✅ done
-- **Milestone 3b**: PDF export (rasterised, page-size & straddle aware) — ✅ done
-- **Polish round 3**: Auto-grow page count + toolbar spacing — ✅ done
-
-## Phase status
-
-- **Phase 1** ✅ fully delivered
-- **Phase 2** ✅ fully delivered
-- **Phase 3** 🟢 PDF export usable end-to-end. Cover sheet, ToC, and a markdown-link bug remain.
+- **Phase 1** ✅ fully delivered (core infrastructure)
+- **Phase 2** ✅ fully delivered (drag, resize, z-index, grid snap)
+- **Phase 3** ✅ core scope delivered (multi-page canvas + PDF export). Optional sub-tasks (#26 cover sheet, #27 ToC sidebar) and one deferred bug (#28 link clicks) remain.
 - **Phase 4** 🔒 blocked
 
 ## ✅ Completed
@@ -29,34 +17,30 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 
 **Phase 2:** #13, #16, #17, #18, #19
 
-**Polish round 1:** #20, #21, #22, #23
+**Polish round 1 (markdown rendering, image scaling, cell labels, overflow-clip code):** #20, #21, #22, #23
 
-**Polish round 2:** #24
+**Polish round 2 (auto-fit images on first render):** #24
 
-**Phase 3:** #25 (multi-page canvas)
-
-## 🟢 In progress
-
-- **#14** Phase 3 rollup (PDF export, polish, docs) — PDF export usable; remaining work is cover sheet (#26), docs, and minor bugs.
+**Phase 3 (multi-page canvas + PDF export):** #14, #25
 
 ## ⏸ Deferred
 
-- **#28** Markdown links don't navigate in summary view or PDF — two fixes tried (capture-phase click, deep-clone-and-replace), neither works. User flagged as non-critical 2026-04-26. Diagnostic step: devtools console + cursor inspection.
+- **#28** Markdown links don't navigate in summary view or PDF. Four fixes attempted; document-level handlers don't even fire — JupyterLab/Lumino is suppressing pointer/click events for content inside the overlay canvas. Best-effort mousedown listener left in code. Not blocking; user flagged 2026-04-26 as costing more to fix than it's worth right now.
 
 ## ⬜ Available
 
-- **#26** PDF cover sheet (title, author, date, optional ToC) — depends on #14
+- **#26** PDF cover sheet (title, author, date, optional ToC) — ~half a day's work; auto-generates a title page from notebook metadata. Not started.
 
 ## 🔒 Blocked
 
 - **#27** Summary-mode ToC sidebar (optional) — blocked by #26
-- **#15** Phase 4: Advanced features — blocked by #14
+- **#15** Phase 4: Advanced features (templates, bulk ops, advanced keyboard) — blocked by #26 (so all of Phase 3 finishes first)
 
 ## Phase map
 
 - **Phase 1** ✅ done
 - **Phase 2** ✅ done
-- **Phase 3** in progress: #25 ✅ → PDF export ✅ → #26 (cover sheet) → optional #27 (ToC sidebar) → #14 close-out
+- **Phase 3** ✅ core done · #26 + #27 optional · #28 deferred
 - **Phase 4**: #15
 
 ## Design decisions (see Claude's memory for details; `CLAUDE.md` for spec)

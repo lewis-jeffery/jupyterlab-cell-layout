@@ -208,7 +208,9 @@
 .jp-CellLayout-md a {
   color: var(--jp-content-link-color, #2196f3);
   text-decoration: underline;
-  pointer-events: auto;
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  user-select: text;
 }
 
 .jp-CellLayout-md img {

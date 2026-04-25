@@ -455,6 +455,42 @@ const plugin: JupyterFrontEndPlugin<void> = {
       isEnabled: () => notebooks.currentWidget !== null
     });
 
+    // Best-effort markdown-link navigation. Multiple attempts (in-cell
+    // capture-phase click handler, deep-clone-and-replace, document
+    // capture-phase click, document capture-phase mousedown) have not
+    // delivered consistent navigation on user systems — JupyterLab/Lumino
+    // appears to swallow these events for content inside our overlay
+    // canvas in some configurations. Tracked as deferred task #28. The
+    // mousedown listener below is left in place because it costs almost
+    // nothing and may navigate successfully on some setups.
+    document.addEventListener(
+      'mousedown',
+      e => {
+        if ((e as MouseEvent).button !== 0) {
+          return;
+        }
+        const target = e.target as HTMLElement | null;
+        if (!target) {
+          return;
+        }
+        const anchor = target.closest('a');
+        if (!anchor) {
+          return;
+        }
+        if (!anchor.closest('.jp-CellLayout-md')) {
+          return;
+        }
+        const href = anchor.getAttribute('href');
+        if (!href || !/^(https?|mailto|ftp):/i.test(href)) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        window.open(href, '_blank', 'noopener,noreferrer');
+      },
+      { capture: true }
+    );
+
     notebooks.widgetAdded.connect((_, panel) => attachNotebook(panel));
     for (const panel of notebooks.filter(() => true)) {
       attachNotebook(panel);
