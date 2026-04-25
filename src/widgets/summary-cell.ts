@@ -49,9 +49,16 @@ export class SummaryCellWidget {
           onGeometryChange: (
             pos: { x: number; y: number },
             size: { width: number; height: number }
-          ) => coordinator.updateInputLayout(id, { position: pos, size }),
+          ) =>
+            coordinator.updateInputLayout(id, {
+              position: pos,
+              size,
+              auto_fit: false
+            }),
           getGridSnapMm,
-          onInteract
+          onInteract,
+          onAutoFit: (size: { width: number; height: number }) =>
+            coordinator.updateInputLayout(id, { size, auto_fit: false })
         }
       : undefined;
     this.input = new SummaryInputCell(cellModel, layout.input, {
@@ -79,10 +86,16 @@ export class SummaryCellWidget {
             ) =>
               coordinator.updateOutputLayout(id, slotId, {
                 position: pos,
-                size
+                size,
+                auto_fit: false
               }),
             getGridSnapMm,
-            onInteract
+            onInteract,
+            onAutoFit: (size: { width: number; height: number }) =>
+              coordinator.updateOutputLayout(id, slotId, {
+                size,
+                auto_fit: false
+              })
           }
         : undefined;
       this.outputs.push(

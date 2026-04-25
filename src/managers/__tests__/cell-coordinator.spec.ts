@@ -178,7 +178,8 @@ describe('pruneStaleCells', () => {
       position: { x: 0, y: 0 },
       size: { width: 100, height: 40 },
       visible_lines: 3,
-      z_index: 1
+      z_index: 1,
+      auto_fit: true
     },
     outputs: []
   });

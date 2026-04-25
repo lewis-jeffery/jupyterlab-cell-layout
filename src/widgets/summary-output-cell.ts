@@ -4,19 +4,23 @@ import { Widget } from '@lumino/widgets';
 import type { IOutputLayout, IPosition, ISize } from '../managers/metadata';
 import { enableDrag, type IDragController } from './draggable';
 import { enableResize, type IResizeController } from './resizable';
-import { coerceText, mmToPx } from './units';
+import { coerceText, mmToPx, pxToMm } from './units';
 
 export interface IOutputLayoutCallbacks {
   onPositionChange: (pos: IPosition) => void;
   onGeometryChange: (pos: IPosition, size: ISize) => void;
   getGridSnapMm?: () => number;
   onInteract?: () => void;
+  onAutoFit?: (size: ISize) => void;
 }
 
 export interface IOutputCellOptions {
   displayLabel: string;
   callbacks?: IOutputLayoutCallbacks;
 }
+
+const MAX_AUTO_FIT_WIDTH_MM = 200;
+const MAX_AUTO_FIT_HEIGHT_MM = 280;
 
 export class SummaryOutputCell extends Widget {
   private _outputLayout: IOutputLayout;
@@ -37,6 +41,7 @@ export class SummaryOutputCell extends Widget {
     this.addClass('jp-CellLayout-output');
     this.addClass(`jp-CellLayout-output-${layout.output_id}`);
     this._applyLayout();
+    this._cachedCallbacks = options.callbacks;
     this._render();
     const callbacks = options.callbacks;
     if (callbacks) {
@@ -124,16 +129,74 @@ export class SummaryOutputCell extends Widget {
       return;
     }
 
+    let autoFitImageAttached = false;
     for (const item of this._items) {
       const el =
         this._outputLayout.output_id === 'output_b'
           ? renderGraphicsItem(item)
           : renderTextItem(item);
-      if (el) {
-        body.appendChild(el);
+      if (!el) {
+        continue;
+      }
+      body.appendChild(el);
+      if (
+        !autoFitImageAttached &&
+        this._outputLayout.output_id === 'output_b' &&
+        this._outputLayout.auto_fit !== false &&
+        el instanceof HTMLImageElement
+      ) {
+        autoFitImageAttached = true;
+        this._attachAutoFit(el);
       }
     }
   }
+
+  private _attachAutoFit(img: HTMLImageElement): void {
+    const apply = (): void => {
+      if (this._outputLayout.auto_fit === false) {
+        return;
+      }
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      if (!w || !h) {
+        return;
+      }
+      let widthMm = pxToMm(w);
+      let heightMm = pxToMm(h);
+      // Cap at sensible page-friendly bounds, preserving aspect ratio
+      const ratio = widthMm / heightMm;
+      if (widthMm > MAX_AUTO_FIT_WIDTH_MM) {
+        widthMm = MAX_AUTO_FIT_WIDTH_MM;
+        heightMm = widthMm / ratio;
+      }
+      if (heightMm > MAX_AUTO_FIT_HEIGHT_MM) {
+        heightMm = MAX_AUTO_FIT_HEIGHT_MM;
+        widthMm = heightMm * ratio;
+      }
+      const newSize = {
+        width: Math.round(widthMm * 10) / 10,
+        height: Math.round(heightMm * 10) / 10
+      };
+      this._outputLayout = {
+        ...this._outputLayout,
+        size: newSize,
+        auto_fit: false
+      };
+      this._applyLayout();
+      this._callbacks?.onAutoFit?.(newSize);
+    };
+    if (img.complete && img.naturalWidth > 0) {
+      apply();
+    } else {
+      img.addEventListener('load', apply, { once: true });
+    }
+  }
+
+  private get _callbacks(): IOutputLayoutCallbacks | undefined {
+    return this._cachedCallbacks;
+  }
+
+  private _cachedCallbacks?: IOutputLayoutCallbacks;
 }
 
 function renderTextItem(item: nbformat.IOutput): HTMLElement | null {

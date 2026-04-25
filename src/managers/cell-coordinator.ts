@@ -62,7 +62,8 @@ function defaultInputLayoutAt(
     position: { x: bounds.margin, y },
     size: { width: bounds.contentWidth, height: DEFAULT_INPUT_HEIGHT_MM },
     visible_lines: visibleLines,
-    z_index: 1
+    z_index: 1,
+    auto_fit: true
   };
 }
 
@@ -80,7 +81,8 @@ function defaultOutputsBelow(input: IInputLayout): IOutputLayout[] {
       visible_lines: 10,
       z_index: 2,
       max_image_width: Math.max(halfWidth - 5, 10),
-      enabled: true
+      enabled: true,
+      auto_fit: true
     },
     {
       output_id: 'output_b',
@@ -90,7 +92,8 @@ function defaultOutputsBelow(input: IInputLayout): IOutputLayout[] {
       visible_lines: null,
       z_index: 2,
       max_image_width: Math.max(halfWidth - 5, 10),
-      enabled: true
+      enabled: true,
+      auto_fit: true
     }
   ];
 }

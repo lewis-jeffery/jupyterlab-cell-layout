@@ -37,6 +37,7 @@ export interface IInputLayout {
   size: ISize;
   visible_lines: number;
   z_index: number;
+  auto_fit: boolean;
 }
 
 export interface IOutputLayout {
@@ -48,6 +49,7 @@ export interface IOutputLayout {
   z_index: number;
   max_image_width: number;
   enabled: boolean;
+  auto_fit: boolean;
 }
 
 export interface ICellLayout {
@@ -96,7 +98,8 @@ export function defaultInputLayout(): IInputLayout {
     position: { x: 0, y: 0 },
     size: { width: 150, height: 40 },
     visible_lines: DEFAULT_SUMMARY_LINES,
-    z_index: 1
+    z_index: 1,
+    auto_fit: true
   };
 }
 
@@ -113,7 +116,8 @@ export function defaultOutputLayout(
     visible_lines: isGraphics ? null : 10,
     z_index: 2,
     max_image_width: isGraphics ? 110 : 140,
-    enabled: true
+    enabled: true,
+    auto_fit: true
   };
 }
 
@@ -166,7 +170,9 @@ function normalizeInput(raw: unknown): IInputLayout {
     position: normalizePosition(raw.position),
     size: normalizeSize(raw.size, fallback.size),
     visible_lines: positiveIntOr(raw.visible_lines, fallback.visible_lines),
-    z_index: numberOr(raw.z_index, fallback.z_index)
+    z_index: numberOr(raw.z_index, fallback.z_index),
+    auto_fit:
+      typeof raw.auto_fit === 'boolean' ? raw.auto_fit : fallback.auto_fit
   };
 }
 
@@ -195,6 +201,8 @@ function normalizeOutput(raw: unknown, fallbackSlot: OutputSlotId): IOutputLayou
   } else {
     visibleLines = classification === 'graphics' ? null : 10;
   }
+  const auto_fit =
+    typeof raw.auto_fit === 'boolean' ? raw.auto_fit : fallback.auto_fit;
   return {
     output_id: slot,
     type: classification,
@@ -203,7 +211,8 @@ function normalizeOutput(raw: unknown, fallbackSlot: OutputSlotId): IOutputLayou
     visible_lines: visibleLines,
     z_index: numberOr(raw.z_index, fallback.z_index),
     max_image_width: numberOr(raw.max_image_width, fallback.max_image_width),
-    enabled
+    enabled,
+    auto_fit
   };
 }
 

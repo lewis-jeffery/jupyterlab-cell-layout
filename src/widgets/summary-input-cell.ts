@@ -5,13 +5,38 @@ import { Widget } from '@lumino/widgets';
 import type { IInputLayout, IPosition, ISize } from '../managers/metadata';
 import { enableDrag, type IDragController } from './draggable';
 import { enableResize, type IResizeController } from './resizable';
-import { coerceText, mmToPx } from './units';
+import { coerceText, mmToPx, pxToMm } from './units';
+
+const MAX_AUTO_FIT_WIDTH_MM = 200;
+const MAX_AUTO_FIT_HEIGHT_MM = 280;
+const MIN_AUTO_FIT_WIDTH_MM = 30;
+const MIN_AUTO_FIT_HEIGHT_MM = 12;
+
+function waitForImages(container: HTMLElement): Promise<void> {
+  const imgs = Array.from(container.querySelectorAll('img'));
+  if (imgs.length === 0) {
+    return Promise.resolve();
+  }
+  return Promise.all(
+    imgs.map(img => {
+      if (img.complete && img.naturalWidth > 0) {
+        return Promise.resolve();
+      }
+      return new Promise<void>(resolve => {
+        const done = (): void => resolve();
+        img.addEventListener('load', done, { once: true });
+        img.addEventListener('error', done, { once: true });
+      });
+    })
+  ).then(() => undefined);
+}
 
 export interface IInputLayoutCallbacks {
   onPositionChange: (pos: IPosition) => void;
   onGeometryChange: (pos: IPosition, size: ISize) => void;
   getGridSnapMm?: () => number;
   onInteract?: () => void;
+  onAutoFit?: (size: ISize) => void;
 }
 
 export interface IInputCellOptions {
@@ -20,12 +45,37 @@ export interface IInputCellOptions {
   callbacks?: IInputLayoutCallbacks;
 }
 
+function clampSizeMm(width: number, height: number): ISize {
+  let w = width;
+  let h = height;
+  const ratio = w > 0 && h > 0 ? w / h : 1;
+  if (w > MAX_AUTO_FIT_WIDTH_MM) {
+    w = MAX_AUTO_FIT_WIDTH_MM;
+    h = w / ratio;
+  }
+  if (h > MAX_AUTO_FIT_HEIGHT_MM) {
+    h = MAX_AUTO_FIT_HEIGHT_MM;
+    w = h * ratio;
+  }
+  if (w < MIN_AUTO_FIT_WIDTH_MM) {
+    w = MIN_AUTO_FIT_WIDTH_MM;
+  }
+  if (h < MIN_AUTO_FIT_HEIGHT_MM) {
+    h = MIN_AUTO_FIT_HEIGHT_MM;
+  }
+  return {
+    width: Math.round(w * 10) / 10,
+    height: Math.round(h * 10) / 10
+  };
+}
+
 export class SummaryInputCell extends Widget {
   private _inputLayout: IInputLayout;
   private _dragCtl?: IDragController;
   private _resizeCtl?: IResizeController;
   private _displayLabel: string;
   private _rendermime?: IRenderMimeRegistry;
+  private _callbacks?: IInputLayoutCallbacks;
 
   constructor(
     private readonly cellModel: ICellModel,
@@ -36,6 +86,7 @@ export class SummaryInputCell extends Widget {
     this._inputLayout = layout;
     this._displayLabel = options.displayLabel;
     this._rendermime = options.rendermime;
+    this._callbacks = options.callbacks;
     this.addClass('jp-CellLayout-input');
     this.addClass(`jp-CellLayout-input-${cellModel.type}`);
     this._applyLayout();
@@ -143,11 +194,40 @@ export class SummaryInputCell extends Widget {
       await renderer.renderModel(model);
       renderer.addClass('jp-CellLayout-md');
       body.appendChild(renderer.node);
+      // Open links in a new tab so they don't replace the JL session
+      for (const a of Array.from(renderer.node.querySelectorAll('a'))) {
+        a.setAttribute('target', '_blank');
+        a.setAttribute('rel', 'noopener noreferrer');
+      }
+      await waitForImages(renderer.node);
+      this._maybeAutoFit(renderer.node);
     } catch (err) {
       const fallback = document.createElement('pre');
       fallback.textContent = source;
       body.appendChild(fallback);
       console.warn('jupyterlab-cell-layout: markdown render failed', err);
     }
+  }
+
+  private _maybeAutoFit(content: HTMLElement): void {
+    if (this._inputLayout.auto_fit === false) {
+      return;
+    }
+    if (!this._callbacks?.onAutoFit) {
+      return;
+    }
+    const widthPx = content.scrollWidth;
+    const heightPx = content.scrollHeight;
+    if (widthPx <= 0 || heightPx <= 0) {
+      return;
+    }
+    const newSize = clampSizeMm(pxToMm(widthPx), pxToMm(heightPx));
+    this._inputLayout = {
+      ...this._inputLayout,
+      size: newSize,
+      auto_fit: false
+    };
+    this._applyLayout();
+    this._callbacks.onAutoFit(newSize);
   }
 }
