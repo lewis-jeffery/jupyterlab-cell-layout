@@ -76,12 +76,45 @@ function applyMode(panel: NotebookPanel, summary: boolean): void {
     panel.node.classList.remove(CSS_SUMMARY_MODE);
     s.canvas.hide();
     panel.content.show();
+    // Carry selection from summary mode: if the user clicked a cell on the
+    // canvas, make that the active cell in the notebook and scroll to it.
+    // Otherwise jump to the top of the notebook.
+    const lastSummaryId = s.canvas.consumeActiveCellId();
+    activateCellAfterModeSwitch(panel, lastSummaryId);
   }
   updateModeButtonLabel(s.modeButton, summary);
   updateOrientationButtonLabel(
     s.orientationButton,
     s.manager.read().settings.orientation
   );
+}
+
+function activateCellAfterModeSwitch(
+  panel: NotebookPanel,
+  cellId: string | null
+): void {
+  const widgets = panel.content.widgets;
+  if (widgets.length === 0) {
+    return;
+  }
+  let targetIndex = 0;
+  if (cellId) {
+    for (let i = 0; i < widgets.length; i++) {
+      if (widgets[i].model.id === cellId) {
+        targetIndex = i;
+        break;
+      }
+    }
+  }
+  panel.content.activeCellIndex = targetIndex;
+  // Defer scrollIntoView one frame so the layout swap from canvas → notebook
+  // has settled and the cell node has its final geometry.
+  requestAnimationFrame(() => {
+    const target = widgets[targetIndex];
+    if (target?.node?.isConnected) {
+      target.node.scrollIntoView({ block: 'center', behavior: 'auto' });
+    }
+  });
 }
 
 function updateModeButtonLabel(button: ToolbarButton, summary: boolean): void {

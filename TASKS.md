@@ -30,8 +30,8 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 ## 🟢 In progress (UX polish from real use)
 
 - **#36** ✅ Eye / hide button on cells in edit mode + right-click context menu item, both toggling inclusion in summary view. Existing `Ctrl+Shift+E` and palette command stay.
-- **#37** ⬜ More visible page break in summary mode — small physical gap between pages, not just a dashed line.
-- **#38** ⬜ Cell selected in summary view should become the active cell when switching to edit mode (scroll into view + activate). If no selection, top of notebook.
+- **#37** ✅ More visible page break in summary mode — replaced the 1-px dashed line with a 12-px grey "gap" strip with subtle drop-shadows, sitting above cells so any cell straddling the boundary is visibly cut in half. PDF export still hides the strip.
+- **#38** ✅ Cell selected in summary view becomes the active cell when switching to edit mode. The canvas tracks the most recently clicked cell (the one brought to front); on summary→edit, that cell is activated and scrolled into view. No prior click → jump to the top of the notebook.
 - **#39** ⬜ LaTeX in markdown cells does not render in summary view (e.g. `$a_i = \sqrt{(y_i-y_{i+1})^2 + (x_i-x_{i+1})^2}$`). Likely MathJax not being triggered after rendermime renders the markdown node.
 - **#40** ⬜ Insert / delete pages in the middle of the summary view (currently only append + remove-last). Should shift cells with `y > breakY` down (insert) or up (delete), clamped to canvas.
 - **#41** ⬜ Multi-cell select + move (drag-marquee, shift-click; "select all above/below active cell" command). Phase 4 item.
