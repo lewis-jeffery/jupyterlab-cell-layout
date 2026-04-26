@@ -203,6 +203,15 @@ export class LayoutCanvas extends Widget {
     return id;
   }
 
+  /**
+   * Resolves once every cell on the canvas has finished any in-flight
+   * content fetch. Used by the PDF exporter to ensure Excel-linked cells
+   * have their tables rendered before html2canvas snapshots the DOM.
+   */
+  async awaitReady(): Promise<void> {
+    await Promise.all(this._cells.map(c => c.awaitReady()));
+  }
+
   bringCellToFront(cellId: string): void {
     this._activeCellId = cellId;
     const group = this._groups.get(cellId);

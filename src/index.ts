@@ -44,6 +44,10 @@ const COMMAND_INSERT_PAGE_ABOVE =
 const COMMAND_INSERT_PAGE_BELOW =
   'jupyterlab-cell-layout:insert-page-below';
 const COMMAND_DELETE_PAGE = 'jupyterlab-cell-layout:delete-page';
+const COMMAND_EDIT_EXCEL_HERE =
+  'jupyterlab-cell-layout:edit-excel-link-here';
+const COMMAND_CLEAR_EXCEL_HERE =
+  'jupyterlab-cell-layout:clear-excel-link-here';
 
 const MAX_PAGES = 20;
 const CSS_SUMMARY_MODE = 'jp-CellLayout-summaryMode';
@@ -272,6 +276,9 @@ async function exportCurrentNotebookToPdf(panel: NotebookPanel): Promise<void> {
     return;
   }
   try {
+    // Wait for any in-flight Excel fetches to settle so the bitmap capture
+    // sees the rendered table rather than a "Reading…" placeholder.
+    await s.canvas.awaitReady();
     const filename = await exportToPdf(panel, s.manager, pageEl);
     console.log(`jupyterlab-cell-layout: exported ${filename}`);
   } catch (err) {
@@ -382,6 +389,62 @@ function clearActiveCellExcelView(panel: NotebookPanel): void {
     return;
   }
   s.coordinator.setExcelLink(activeCell.model.id, null);
+  if (isSummaryMode(s.manager)) {
+    s.canvas.refresh();
+  }
+}
+
+// Tracks the cell id of the most recently right-clicked Excel-rendered
+// cell on the canvas. Mirror of the page-badge tracker below; the canvas
+// is the only place an Excel cell appears, so summary mode is implicit.
+let lastExcelCellId: string | null = null;
+
+function rememberExcelCellOnContextMenu(): void {
+  document.addEventListener(
+    'contextmenu',
+    e => {
+      const target = e.target as HTMLElement | null;
+      const node = target?.closest?.(
+        '.jp-CellLayout-excel'
+      ) as HTMLElement | null;
+      if (!node) {
+        return;
+      }
+      lastExcelCellId = node.dataset.cellId ?? null;
+    },
+    true
+  );
+}
+
+async function editExcelLinkHere(panel: NotebookPanel): Promise<void> {
+  const s = state.get(panel);
+  if (!s || !lastExcelCellId) {
+    return;
+  }
+  const cellId = lastExcelCellId;
+  const existing = s.manager.getCell(cellId)?.excel;
+  const { link, accepted } = await promptForExcelLink(existing);
+  if (!accepted) {
+    return;
+  }
+  if (!link) {
+    window.alert(
+      'Workbook, Sheet, and Named range are all required. Please fill in all three fields.'
+    );
+    return;
+  }
+  s.coordinator.setExcelLink(cellId, link);
+  if (isSummaryMode(s.manager)) {
+    s.canvas.refresh();
+  }
+}
+
+function clearExcelLinkHere(panel: NotebookPanel): void {
+  const s = state.get(panel);
+  if (!s || !lastExcelCellId) {
+    return;
+  }
+  s.coordinator.setExcelLink(lastExcelCellId, null);
   if (isSummaryMode(s.manager)) {
     s.canvas.refresh();
   }
@@ -798,6 +861,30 @@ const plugin: JupyterFrontEndPlugin<void> = {
         notebooks.currentWidget.content.activeCell !== null
     });
 
+    app.commands.addCommand(COMMAND_EDIT_EXCEL_HERE, {
+      label: 'Edit Excel link…',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          void editExcelLinkHere(panel);
+        }
+      },
+      isEnabled: () =>
+        notebooks.currentWidget !== null && lastExcelCellId !== null
+    });
+
+    app.commands.addCommand(COMMAND_CLEAR_EXCEL_HERE, {
+      label: 'Clear Excel link',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          clearExcelLinkHere(panel);
+        }
+      },
+      isEnabled: () =>
+        notebooks.currentWidget !== null && lastExcelCellId !== null
+    });
+
     if (palette) {
       const category = 'Cell Layout';
       for (const command of [
@@ -825,6 +912,18 @@ const plugin: JupyterFrontEndPlugin<void> = {
     });
 
     rememberPageBadgeOnContextMenu();
+    rememberExcelCellOnContextMenu();
+
+    app.contextMenu.addItem({
+      command: COMMAND_EDIT_EXCEL_HERE,
+      selector: '.jp-CellLayout-excel',
+      rank: 1
+    });
+    app.contextMenu.addItem({
+      command: COMMAND_CLEAR_EXCEL_HERE,
+      selector: '.jp-CellLayout-excel',
+      rank: 2
+    });
 
     app.contextMenu.addItem({
       command: COMMAND_INSERT_PAGE_ABOVE,

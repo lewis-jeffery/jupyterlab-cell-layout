@@ -42,6 +42,7 @@ export class SummaryExcelCell extends Widget {
   private _statusEl?: HTMLElement;
   private _isFetching = false;
   private _excelDisposed = false;
+  private _currentFetch: Promise<void> = Promise.resolve();
 
   constructor(layout: IInputLayout, options: IExcelCellOptions) {
     super();
@@ -149,7 +150,21 @@ export class SummaryExcelCell extends Widget {
     this._statusEl = status;
   }
 
-  private async _fetch(): Promise<void> {
+  /**
+   * Resolves once any in-flight fetch has settled. Used by the PDF exporter
+   * to make sure the rendered table has actually arrived before html2canvas
+   * snapshots the DOM.
+   */
+  awaitReady(): Promise<void> {
+    return this._currentFetch;
+  }
+
+  private _fetch(): Promise<void> {
+    this._currentFetch = this._fetchInner();
+    return this._currentFetch;
+  }
+
+  private async _fetchInner(): Promise<void> {
     if (this._isFetching || this._excelDisposed) {
       return;
     }

@@ -189,6 +189,18 @@ export class SummaryCellWidget {
     return [this._main, ...this.outputs];
   }
 
+  /**
+   * Resolved once this cell's content is ready to be captured. For Excel
+   * cells this awaits the in-flight fetch; for everything else it resolves
+   * immediately.
+   */
+  awaitReady(): Promise<void> {
+    if (this._main instanceof SummaryExcelCell) {
+      return this._main.awaitReady();
+    }
+    return Promise.resolve();
+  }
+
   dispose(): void {
     this._main.dispose();
     for (const w of this.outputs) {
