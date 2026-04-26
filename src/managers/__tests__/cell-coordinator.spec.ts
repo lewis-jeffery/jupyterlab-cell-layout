@@ -9,6 +9,8 @@ import {
   pageBoundsFor,
   pageHeightMmFor,
   pruneStaleCells,
+  shiftCellsAtOrBelow,
+  summaryCellsOnPage,
   type ICellInfo
 } from '../cell-coordinator';
 import {
@@ -298,5 +300,137 @@ describe('pruneStaleCells', () => {
     const kept = makeLayout();
     const result = pruneStaleCells({ keep: kept }, new Set(['keep']));
     expect(result.keep).toBe(kept);
+  });
+});
+
+describe('shiftCellsAtOrBelow', () => {
+  const cell = (y: number, h = 40, outs: number[] = []): ICellLayout => ({
+    type: 'code',
+    mode: 'summary',
+    input: {
+      position: { x: 20, y },
+      size: { width: 100, height: h },
+      visible_lines: 3,
+      z_index: 1,
+      auto_fit: false
+    },
+    outputs: outs.map((oy, i) => ({
+      output_id: i === 0 ? 'output_a' : 'output_b',
+      type: 'text' as const,
+      position: { x: 20, y: oy },
+      size: { width: 100, height: 30 },
+      visible_lines: 10,
+      z_index: 2,
+      max_image_width: 90,
+      enabled: true,
+      auto_fit: false
+    }))
+  });
+
+  it('shifts cells whose top edge is at or below the threshold', () => {
+    const cells = { a: cell(50), b: cell(150), c: cell(250) };
+    const out = shiftCellsAtOrBelow(cells, 200, 100);
+    expect(out.a.input.position.y).toBe(50);
+    expect(out.b.input.position.y).toBe(150);
+    expect(out.c.input.position.y).toBe(350);
+  });
+
+  it('shifts at the boundary inclusively', () => {
+    const cells = { a: cell(200) };
+    const out = shiftCellsAtOrBelow(cells, 200, 100);
+    expect(out.a.input.position.y).toBe(300);
+  });
+
+  it('shifts negative deltas (page delete)', () => {
+    const cells = { a: cell(400) };
+    const out = shiftCellsAtOrBelow(cells, 297, -297);
+    expect(out.a.input.position.y).toBe(103);
+  });
+
+  it('shifts outputs independently of input', () => {
+    const cells = { a: cell(50, 40, [250, 80]) };
+    const out = shiftCellsAtOrBelow(cells, 200, 100);
+    expect(out.a.input.position.y).toBe(50);
+    expect(out.a.outputs[0].position.y).toBe(350);
+    expect(out.a.outputs[1].position.y).toBe(80);
+  });
+
+  it('preserves cells that should not move', () => {
+    const cells = { a: cell(50) };
+    const out = shiftCellsAtOrBelow(cells, 200, 100);
+    expect(out.a.input.position.y).toBe(50);
+    expect(out.a.input.size.height).toBe(40);
+  });
+});
+
+describe('summaryCellsOnPage', () => {
+  const cell = (
+    y: number,
+    h: number,
+    mode: 'summary' | 'edit' = 'summary',
+    outs: { y: number; h: number; enabled: boolean }[] = []
+  ): ICellLayout => ({
+    type: 'code',
+    mode,
+    input: {
+      position: { x: 20, y },
+      size: { width: 100, height: h },
+      visible_lines: 3,
+      z_index: 1,
+      auto_fit: false
+    },
+    outputs: outs.map((o, i) => ({
+      output_id: i === 0 ? 'output_a' : 'output_b',
+      type: 'text' as const,
+      position: { x: 20, y: o.y },
+      size: { width: 100, height: o.h },
+      visible_lines: 10,
+      z_index: 2,
+      max_image_width: 90,
+      enabled: o.enabled,
+      auto_fit: false
+    }))
+  });
+
+  it('detects an input fully on the page', () => {
+    expect(
+      summaryCellsOnPage({ a: cell(310, 40) }, 297, 594)
+    ).toBe(true);
+  });
+
+  it('detects a cell straddling the page boundary at the top', () => {
+    expect(
+      summaryCellsOnPage({ a: cell(290, 30) }, 297, 594)
+    ).toBe(true);
+  });
+
+  it('returns false when the only cell is on a different page', () => {
+    expect(summaryCellsOnPage({ a: cell(50, 40) }, 297, 594)).toBe(false);
+  });
+
+  it('ignores excluded cells', () => {
+    expect(
+      summaryCellsOnPage({ a: cell(310, 40, 'edit') }, 297, 594)
+    ).toBe(false);
+  });
+
+  it('ignores disabled output slots', () => {
+    expect(
+      summaryCellsOnPage(
+        { a: cell(50, 40, 'summary', [{ y: 310, h: 30, enabled: false }]) },
+        297,
+        594
+      )
+    ).toBe(false);
+  });
+
+  it('detects an output slot on the page when input is elsewhere', () => {
+    expect(
+      summaryCellsOnPage(
+        { a: cell(50, 40, 'summary', [{ y: 310, h: 30, enabled: true }]) },
+        297,
+        594
+      )
+    ).toBe(true);
   });
 });

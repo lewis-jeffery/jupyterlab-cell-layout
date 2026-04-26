@@ -263,6 +263,8 @@ export class LayoutCanvas extends Widget {
       const label = document.createElement('div');
       label.className = 'jp-CellLayout-pageNumber';
       label.textContent = `Page ${i + 1} of ${count}`;
+      label.dataset.pageIndex = String(i);
+      label.title = 'Right-click for page actions';
       // Anchor at the bottom-right of page i: 18px above the bottom edge of the page
       label.style.top = `${pageHeightPx * (i + 1) - 18}px`;
       this._page.appendChild(label);

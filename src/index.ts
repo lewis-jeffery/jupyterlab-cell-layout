@@ -30,6 +30,11 @@ const COMMAND_ADD_PAGE = 'jupyterlab-cell-layout:add-page';
 const COMMAND_REMOVE_PAGE = 'jupyterlab-cell-layout:remove-page';
 const COMMAND_EXPORT_PDF = 'jupyterlab-cell-layout:export-pdf';
 const COMMAND_SHOW_INFO = 'jupyterlab-cell-layout:show-info';
+const COMMAND_INSERT_PAGE_ABOVE =
+  'jupyterlab-cell-layout:insert-page-above';
+const COMMAND_INSERT_PAGE_BELOW =
+  'jupyterlab-cell-layout:insert-page-below';
+const COMMAND_DELETE_PAGE = 'jupyterlab-cell-layout:delete-page';
 
 const MAX_PAGES = 20;
 const CSS_SUMMARY_MODE = 'jp-CellLayout-summaryMode';
@@ -266,6 +271,70 @@ async function exportCurrentNotebookToPdf(panel: NotebookPanel): Promise<void> {
       console.error('jupyterlab-cell-layout: PDF export failed', err);
       window.alert(`PDF export failed: ${(err as Error).message ?? err}`);
     }
+  }
+}
+
+// Tracks the page index of the most recently right-clicked page badge.
+// JL's contextMenu API doesn't pass DOM context to commands, so we capture
+// it on the document's contextmenu event (capture phase, before the menu
+// opens) and read it from the command handler.
+let lastPageBadgeIndex: number | null = null;
+
+function rememberPageBadgeOnContextMenu(): void {
+  document.addEventListener(
+    'contextmenu',
+    e => {
+      const target = e.target as HTMLElement | null;
+      const badge = target?.closest?.(
+        '.jp-CellLayout-pageNumber'
+      ) as HTMLElement | null;
+      if (!badge) {
+        return;
+      }
+      const raw = badge.dataset.pageIndex;
+      const parsed = raw === undefined ? NaN : parseInt(raw, 10);
+      lastPageBadgeIndex = Number.isFinite(parsed) ? parsed : null;
+    },
+    true
+  );
+}
+
+function insertPageRelative(
+  panel: NotebookPanel,
+  position: 'above' | 'below'
+): void {
+  const s = state.get(panel);
+  if (!s || lastPageBadgeIndex === null) {
+    return;
+  }
+  const targetIdx =
+    position === 'above' ? lastPageBadgeIndex : lastPageBadgeIndex + 1;
+  const result = s.coordinator.insertPageAt(targetIdx);
+  if (!result.ok) {
+    if (result.message) {
+      window.alert(result.message);
+    }
+    return;
+  }
+  if (isSummaryMode(s.manager)) {
+    s.canvas.refresh();
+  }
+}
+
+function deleteSelectedPage(panel: NotebookPanel): void {
+  const s = state.get(panel);
+  if (!s || lastPageBadgeIndex === null) {
+    return;
+  }
+  const result = s.coordinator.deletePageAt(lastPageBadgeIndex);
+  if (!result.ok) {
+    if (result.message) {
+      window.alert(result.message);
+    }
+    return;
+  }
+  if (isSummaryMode(s.manager)) {
+    s.canvas.refresh();
   }
 }
 
@@ -539,6 +608,42 @@ const plugin: JupyterFrontEndPlugin<void> = {
         notebooks.currentWidget.content.activeCell !== null
     });
 
+    app.commands.addCommand(COMMAND_INSERT_PAGE_ABOVE, {
+      label: 'Cell Layout: Insert page above (right-clicked page)',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          insertPageRelative(panel, 'above');
+        }
+      },
+      isEnabled: () =>
+        notebooks.currentWidget !== null && lastPageBadgeIndex !== null
+    });
+
+    app.commands.addCommand(COMMAND_INSERT_PAGE_BELOW, {
+      label: 'Cell Layout: Insert page below (right-clicked page)',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          insertPageRelative(panel, 'below');
+        }
+      },
+      isEnabled: () =>
+        notebooks.currentWidget !== null && lastPageBadgeIndex !== null
+    });
+
+    app.commands.addCommand(COMMAND_DELETE_PAGE, {
+      label: 'Cell Layout: Delete this page (right-clicked page)',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          deleteSelectedPage(panel);
+        }
+      },
+      isEnabled: () =>
+        notebooks.currentWidget !== null && lastPageBadgeIndex !== null
+    });
+
     app.commands.addCommand(COMMAND_SHOW_INFO, {
       label: 'Cell Layout: Show info (debug)',
       execute: () => {
@@ -554,6 +659,24 @@ const plugin: JupyterFrontEndPlugin<void> = {
       command: COMMAND_TOGGLE_CELL_INCLUSION,
       selector: '.jp-Notebook .jp-Cell',
       rank: 11
+    });
+
+    rememberPageBadgeOnContextMenu();
+
+    app.contextMenu.addItem({
+      command: COMMAND_INSERT_PAGE_ABOVE,
+      selector: '.jp-CellLayout-pageNumber',
+      rank: 1
+    });
+    app.contextMenu.addItem({
+      command: COMMAND_INSERT_PAGE_BELOW,
+      selector: '.jp-CellLayout-pageNumber',
+      rank: 2
+    });
+    app.contextMenu.addItem({
+      command: COMMAND_DELETE_PAGE,
+      selector: '.jp-CellLayout-pageNumber',
+      rank: 3
     });
 
     notebooks.widgetAdded.connect((_, panel) => attachNotebook(panel));

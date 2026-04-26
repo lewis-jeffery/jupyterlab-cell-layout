@@ -45,8 +45,23 @@
   color: var(--jp-ui-font-color3, #999);
   background: rgba(255, 255, 255, 0.7);
   padding: 0 4px;
-  pointer-events: none;
+  cursor: context-menu;
+  user-select: none;
+  border-radius: 2px;
   z-index: 50;
+}
+
+.jp-CellLayout-pageNumber:hover {
+  color: var(--jp-ui-font-color1, #333);
+  background: rgba(255, 255, 255, 0.95);
+  outline: 1px solid var(--jp-border-color2, #bbb);
+}
+
+/* Page badges suppress all interaction during PDF export so the rendered
+ * bitmap is clean. */
+.jp-CellLayout-exporting .jp-CellLayout-pageNumber {
+  pointer-events: none;
+  cursor: default;
 }
 
 .jp-CellLayout-snapGuide {

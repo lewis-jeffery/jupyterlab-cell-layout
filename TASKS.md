@@ -33,7 +33,7 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 - **#37** ✅ More visible page break in summary mode — replaced the 1-px dashed line with a 12-px grey "gap" strip with subtle drop-shadows, sitting above cells so any cell straddling the boundary is visibly cut in half. PDF export still hides the strip.
 - **#38** ✅ Cell selected in summary view becomes the active cell when switching to edit mode. The canvas tracks the most recently clicked cell (the one brought to front); on summary→edit, that cell is activated and scrolled into view. No prior click → jump to the top of the notebook.
 - **#39** ⬜ LaTeX in markdown cells does not render in summary view (e.g. `$a_i = \sqrt{(y_i-y_{i+1})^2 + (x_i-x_{i+1})^2}$`). Likely MathJax not being triggered after rendermime renders the markdown node.
-- **#40** ⬜ Insert / delete pages in the middle of the summary view (currently only append + remove-last). Should shift cells with `y > breakY` down (insert) or up (delete), clamped to canvas.
+- **#40** ✅ Insert / delete pages in the middle of the summary view. Right-click any "Page N of M" badge in the bottom-right of a page → menu offers "Insert page above", "Insert page below", "Delete this page". Insert shifts cells with top y >= boundary down by one pageHeight; delete shifts cells below up by one pageHeight. Delete refuses if any summary-mode cell sits on the chosen page.
 - **#41** ⬜ Multi-cell select + move (drag-marquee, shift-click; "select all above/below active cell" command). Phase 4 item.
 
 ## ⏸ Deferred
