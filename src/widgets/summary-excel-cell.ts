@@ -1,6 +1,10 @@
 import { Widget } from '@lumino/widgets';
 
-import type { ExcelBridge, CellValue } from '../managers/excel-bridge';
+import type {
+  CellValue,
+  ExcelBridge,
+  ISubscription
+} from '../managers/excel-bridge';
 import type {
   IExcelLink,
   IInputLayout,
@@ -43,6 +47,8 @@ export class SummaryExcelCell extends Widget {
   private _isFetching = false;
   private _excelDisposed = false;
   private _currentFetch: Promise<void> = Promise.resolve();
+  private _subscription: ISubscription | null = null;
+  private _initialPushReceived = false;
 
   constructor(layout: IInputLayout, options: IExcelCellOptions) {
     super();
@@ -54,7 +60,7 @@ export class SummaryExcelCell extends Widget {
     this.addClass('jp-CellLayout-input');
     this._applyLayout();
     this._renderShell();
-    void this._fetch();
+    this._startSubscription();
     const callbacks = options.callbacks;
     if (callbacks) {
       this._dragCtl = enableDrag(
@@ -100,9 +106,63 @@ export class SummaryExcelCell extends Widget {
 
   dispose(): void {
     this._excelDisposed = true;
+    this._subscription?.dispose();
+    this._subscription = null;
     this._dragCtl?.dispose();
     this._resizeCtl?.dispose();
     super.dispose();
+  }
+
+  /**
+   * Open the live subscription for this cell's named range. The kernel sends
+   * an initial value immediately and then pushes again whenever the range
+   * changes. The first push resolves `_currentFetch` so the PDF exporter
+   * (which awaits all cells) can capture the rendered table.
+   */
+  private _startSubscription(): void {
+    if (!this._bridge) {
+      this._showStatus('No kernel link available');
+      return;
+    }
+    this._isFetching = true;
+    this._showStatus('Reading…');
+    this.node.classList.add('jp-CellLayout-excelLoading');
+    let resolveInitial: (() => void) | null = null;
+    this._currentFetch = new Promise<void>(resolve => {
+      resolveInitial = resolve;
+    });
+    const settle = (): void => {
+      if (this._isFetching) {
+        this._isFetching = false;
+        this.node.classList.remove('jp-CellLayout-excelLoading');
+      }
+      if (resolveInitial) {
+        resolveInitial();
+        resolveInitial = null;
+      }
+      this._initialPushReceived = true;
+    };
+    this._subscription = this._bridge.subscribe(this._link, {
+      onData: rows => {
+        if (this._excelDisposed) {
+          return;
+        }
+        this._renderTable(rows);
+        const stamp = new Date().toLocaleTimeString();
+        this._showStatus(`${this._link.sheet}!${this._link.range} · ${stamp}`);
+        settle();
+      },
+      onError: msg => {
+        if (this._excelDisposed) {
+          return;
+        }
+        if (!this._initialPushReceived) {
+          this._renderTable([]);
+        }
+        this._showStatus(`Error: ${msg}`, true);
+        settle();
+      }
+    });
   }
 
   private _applyLayout(): void {

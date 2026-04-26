@@ -39,12 +39,12 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 
 **Excel range view — Phase 1 (resumed 2026-04-27 on `feat/excel-phase-1`):** #31 — a layout cell can mirror an open Excel workbook's named range via xlwings. Read-only, manual refresh. Comm bridge between frontend and a kernel-side helper (`jupyterlab_cell_layout.excel_bridge.register()`). Layout metadata gains `cells[*].excel = { workbook, sheet, range }`. Command palette: "Mark active cell as Excel range view" prompts for the three values; "Clear Excel range link" reverts. **Open bug:** after running the Mark command, the debug info dialog does not show the `excel` field on the affected cell — metadata may not be persisting. Diagnosing now.
 
-⏳ **Excel — future phases (not started):**
-- **#32** Phase 2: editable sub-ranges (write back via xlwings on commit).
-- **#33** Phase 3: live sync via 1 s poll + diff push.
-- **#34** Phase 4: formatting passthrough (colours, bold, number formats, merged cells).
-- **#35** Phase 5: robustness (Excel-not-running affordance, debounced concurrent edits).
-- **#41** Multi-cell select + move (drag-marquee, shift-click; "select all above/below active cell" command). Phase 4 item.
+⏳ **Excel — future phases:**
+- **#32** ⏸ Phase 2 (editable sub-ranges) — **deprioritised** under the one-way-display model: editing happens in Excel itself; summary is read-only for distribution.
+- **#33** 🟢 Phase 3 (live sync via 1 s poll + diff push): persistent comm, kernel daemon polling thread, `subscribe` / `unsubscribe` / `read` message types, polling pauses while user code executes. Implemented; awaiting end-to-end verification with a live workbook.
+- **#34** ⬜ Phase 4: formatting passthrough (colours, bold, number formats, merged cells).
+- **#35** ⬜ Phase 5: robustness (Excel-not-running affordance, debounced concurrent edits, **Windows COM `pythoncom.CoInitialize()` per polling thread — required before any PyPI publish**).
+- **#41** ⬜ Multi-cell select + move (drag-marquee, shift-click; "select all above/below active cell" command). Phase 4 item.
 
 ## ⏸ Deferred
 
