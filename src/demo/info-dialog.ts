@@ -98,6 +98,11 @@ function createInfoNode(panel: NotebookPanel): HTMLElement {
           `    ${o.output_id}: ${o.enabled ? 'enabled' : 'DISABLED'} · type=${o.type} · pos=(${o.position.x},${o.position.y}) mm · size=${o.size.width}×${o.size.height} mm`
         );
       }
+      if (saved.excel) {
+        lines.push(
+          `    excel:  workbook=${saved.excel.workbook} · sheet=${saved.excel.sheet} · range=${saved.excel.range}`
+        );
+      }
     }
     lines.push('');
   }

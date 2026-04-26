@@ -298,7 +298,10 @@ class ExcelLinkPrompt extends Widget {
     node.style.columnGap = '8px';
     node.style.minWidth = '320px';
     this._workbook = mkRow(node, 'Workbook', initial.workbook ?? '', 'data.xlsx');
-    this._sheet = mkRow(node, 'Sheet', initial.sheet ?? '', 'Sheet1');
+    // "Sheet1" is the default Excel sheet name — pre-fill rather than only
+    // hint via placeholder, so users who leave the field alone still get a
+    // working value.
+    this._sheet = mkRow(node, 'Sheet', initial.sheet ?? 'Sheet1', 'Sheet1');
     this._range = mkRow(
       node,
       'Named range',
@@ -338,17 +341,14 @@ function mkRow(
 
 async function promptForExcelLink(
   initial?: IExcelLink
-): Promise<IExcelLink | null> {
+): Promise<{ link: IExcelLink | null; accepted: boolean }> {
   const body = new ExcelLinkPrompt(initial);
   const result = await showDialog({
     title: 'Mark cell as Excel range view',
     body,
     buttons: [Dialog.cancelButton(), Dialog.okButton({ label: 'Apply' })]
   });
-  if (!result.button.accept) {
-    return null;
-  }
-  return body.getValue();
+  return { link: body.getValue(), accepted: !!result.button.accept };
 }
 
 async function markActiveCellAsExcelView(panel: NotebookPanel): Promise<void> {
@@ -359,8 +359,14 @@ async function markActiveCellAsExcelView(panel: NotebookPanel): Promise<void> {
   }
   const cellId = activeCell.model.id;
   const existing = s.manager.getCell(cellId)?.excel;
-  const link = await promptForExcelLink(existing);
+  const { link, accepted } = await promptForExcelLink(existing);
+  if (!accepted) {
+    return;
+  }
   if (!link) {
+    window.alert(
+      'Workbook, Sheet, and Named range are all required. Please fill in all three fields.'
+    );
     return;
   }
   s.coordinator.setExcelLink(cellId, link);
