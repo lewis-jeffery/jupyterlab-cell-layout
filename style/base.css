@@ -329,3 +329,40 @@
   font-style: italic;
   font-size: 10px;
 }
+
+/* Eye / hide toggle injected onto each notebook cell. Top-left corner —
+ * JupyterLab 4's built-in cell toolbar lives top-right, so we sit on the
+ * opposite side. Slightly faded at rest so it doesn't compete with the
+ * editor; bolder on hover and when the cell is excluded. */
+.jp-CellLayout-includeToggle {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--jp-ui-font-color2, #555);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity 120ms, background 120ms, border-color 120ms;
+  z-index: 100;
+}
+
+.jp-CellLayout-includeToggle:hover,
+.jp-CellLayout-includeToggle:focus-visible {
+  opacity: 1;
+  background: var(--jp-layout-color2, rgba(0, 0, 0, 0.04));
+  border-color: var(--jp-border-color2, #ddd);
+  outline: none;
+}
+
+.jp-CellLayout-includeToggle--excluded {
+  opacity: 0.95;
+  color: var(--jp-warn-color1, #d9534f);
+}

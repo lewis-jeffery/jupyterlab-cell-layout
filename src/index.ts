@@ -120,39 +120,94 @@ function toggleMode(panel: NotebookPanel): void {
   applyMode(panel, next);
 }
 
-function toggleActiveCellInclusion(panel: NotebookPanel): void {
+const INCLUDE_TOGGLE_CLASS = 'jp-CellLayout-includeToggle';
+
+const EYE_OPEN_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+
+const EYE_CLOSED_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+function setInclusionVisuals(
+  cellNode: HTMLElement,
+  button: HTMLButtonElement | null,
+  mode: 'summary' | 'edit'
+): void {
+  const excluded = mode === 'edit';
+  cellNode.classList.toggle('jp-CellLayout-cellExcluded', excluded);
+  if (button) {
+    button.classList.toggle(`${INCLUDE_TOGGLE_CLASS}--excluded`, excluded);
+    button.innerHTML = excluded ? EYE_CLOSED_SVG : EYE_OPEN_SVG;
+    button.title = excluded
+      ? 'Click to include this cell in the summary view'
+      : 'Click to exclude this cell from the summary view';
+    button.setAttribute(
+      'aria-label',
+      excluded ? 'Include cell in summary' : 'Exclude cell from summary'
+    );
+    button.setAttribute('aria-pressed', String(excluded));
+  }
+}
+
+function ensureIncludeToggleButton(
+  panel: NotebookPanel,
+  cellNode: HTMLElement,
+  cellId: string
+): HTMLButtonElement {
+  const existing = cellNode.querySelector(
+    `:scope > .${INCLUDE_TOGGLE_CLASS}`
+  ) as HTMLButtonElement | null;
+  if (existing) {
+    return existing;
+  }
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = INCLUDE_TOGGLE_CLASS;
+  // Stop event propagation so clicking the toggle doesn't activate / move
+  // focus to the cell. JL uses pointerdown for cell selection.
+  for (const evt of ['pointerdown', 'mousedown'] as const) {
+    btn.addEventListener(evt, e => e.stopPropagation());
+  }
+  btn.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleCellInclusionById(panel, cellId);
+  });
+  cellNode.appendChild(btn);
+  return btn;
+}
+
+function toggleCellInclusionById(panel: NotebookPanel, cellId: string): void {
   const s = state.get(panel);
   if (!s) {
     return;
   }
-  const activeCell = panel.content.activeCell;
-  if (!activeCell) {
-    return;
-  }
-  const cellId = activeCell.model.id;
-  const newMode = s.coordinator.toggleCellInclusion(cellId);
-  activeCell.node.classList.toggle(
-    'jp-CellLayout-cellExcluded',
-    newMode === 'edit'
-  );
+  s.coordinator.toggleCellInclusion(cellId);
+  refreshCellAffordances(panel);
   if (isSummaryMode(s.manager)) {
     s.canvas.refresh();
   }
 }
 
-function reapplyCellExclusionClasses(panel: NotebookPanel): void {
+function toggleActiveCellInclusion(panel: NotebookPanel): void {
+  const activeCell = panel.content.activeCell;
+  if (!activeCell) {
+    return;
+  }
+  toggleCellInclusionById(panel, activeCell.model.id);
+}
+
+function refreshCellAffordances(panel: NotebookPanel): void {
   const s = state.get(panel);
   if (!s) {
     return;
   }
   const layout = s.manager.read();
-  const widgets = panel.content.widgets;
-  for (const cellWidget of widgets) {
-    const mode = layout.cells[cellWidget.model.id]?.mode ?? 'summary';
-    cellWidget.node.classList.toggle(
-      'jp-CellLayout-cellExcluded',
-      mode === 'edit'
-    );
+  for (const cellWidget of panel.content.widgets) {
+    const cellId = cellWidget.model.id;
+    const mode = layout.cells[cellId]?.mode ?? 'summary';
+    const button = ensureIncludeToggleButton(panel, cellWidget.node, cellId);
+    setInclusionVisuals(cellWidget.node, button, mode);
   }
 }
 
@@ -324,9 +379,9 @@ function attachNotebook(panel: NotebookPanel): void {
     });
 
     applyMode(panel, isSummaryMode(manager));
-    reapplyCellExclusionClasses(panel);
+    refreshCellAffordances(panel);
 
-    coordinator.changed.connect(() => reapplyCellExclusionClasses(panel));
+    coordinator.changed.connect(() => refreshCellAffordances(panel));
     coordinator.settingsChanged.connect(() => {
       const s = state.get(panel);
       if (!s) {
@@ -460,6 +515,12 @@ const plugin: JupyterFrontEndPlugin<void> = {
         }
       },
       isEnabled: () => notebooks.currentWidget !== null
+    });
+
+    app.contextMenu.addItem({
+      command: COMMAND_TOGGLE_CELL_INCLUSION,
+      selector: '.jp-Notebook .jp-Cell',
+      rank: 11
     });
 
     notebooks.widgetAdded.connect((_, panel) => attachNotebook(panel));

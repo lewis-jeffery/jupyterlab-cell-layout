@@ -1,6 +1,6 @@
 # JupyterLab Cell Layout — Task List
 
-_Last updated: 2026-04-26 (smart alignment guides)_
+_Last updated: 2026-04-26 (UX polish from real use)_
 
 Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · ⏸ deferred
 
@@ -26,6 +26,15 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 **Link-click fix:** #28 — markdown links navigate from summary view and PDF annotations are clickable. Root cause was our own drag handler calling `preventDefault()` on pointerdown, which suppressed the synthesized click event for descendants; fix skips drag init when pointerdown lands on a navigable anchor.
 
 **Smart alignment guides:** #30 — during drag and resize, snap to nearby cell edges and centres, plus active-page edges and centres. 2 mm tolerance. Same-page only. Smart-guide snap takes precedence over the grid; falls back to grid when no smart match. User-configurable via the `smartGuides` setting (default on). Resize snaps the moving edge only; centre candidates are excluded for resize.
+
+## 🟢 In progress (UX polish from real use)
+
+- **#36** ✅ Eye / hide button on cells in edit mode + right-click context menu item, both toggling inclusion in summary view. Existing `Ctrl+Shift+E` and palette command stay.
+- **#37** ⬜ More visible page break in summary mode — small physical gap between pages, not just a dashed line.
+- **#38** ⬜ Cell selected in summary view should become the active cell when switching to edit mode (scroll into view + activate). If no selection, top of notebook.
+- **#39** ⬜ LaTeX in markdown cells does not render in summary view (e.g. `$a_i = \sqrt{(y_i-y_{i+1})^2 + (x_i-x_{i+1})^2}$`). Likely MathJax not being triggered after rendermime renders the markdown node.
+- **#40** ⬜ Insert / delete pages in the middle of the summary view (currently only append + remove-last). Should shift cells with `y > breakY` down (insert) or up (delete), clamped to canvas.
+- **#41** ⬜ Multi-cell select + move (drag-marquee, shift-click; "select all above/below active cell" command). Phase 4 item.
 
 ## ⏸ Deferred
 
