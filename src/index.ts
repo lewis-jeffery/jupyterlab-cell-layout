@@ -39,6 +39,11 @@ const COMMAND_EXPORT_PDF = 'jupyterlab-cell-layout:export-pdf';
 const COMMAND_SHOW_INFO = 'jupyterlab-cell-layout:show-info';
 const COMMAND_MARK_AS_EXCEL = 'jupyterlab-cell-layout:mark-as-excel-view';
 const COMMAND_CLEAR_EXCEL = 'jupyterlab-cell-layout:clear-excel-view';
+const COMMAND_INSERT_PAGE_ABOVE =
+  'jupyterlab-cell-layout:insert-page-above';
+const COMMAND_INSERT_PAGE_BELOW =
+  'jupyterlab-cell-layout:insert-page-below';
+const COMMAND_DELETE_PAGE = 'jupyterlab-cell-layout:delete-page';
 
 const MAX_PAGES = 20;
 const CSS_SUMMARY_MODE = 'jp-CellLayout-summaryMode';
@@ -86,12 +91,45 @@ function applyMode(panel: NotebookPanel, summary: boolean): void {
     panel.node.classList.remove(CSS_SUMMARY_MODE);
     s.canvas.hide();
     panel.content.show();
+    // Carry selection from summary mode: if the user clicked a cell on the
+    // canvas, make that the active cell in the notebook and scroll to it.
+    // Otherwise jump to the top of the notebook.
+    const lastSummaryId = s.canvas.consumeActiveCellId();
+    activateCellAfterModeSwitch(panel, lastSummaryId);
   }
   updateModeButtonLabel(s.modeButton, summary);
   updateOrientationButtonLabel(
     s.orientationButton,
     s.manager.read().settings.orientation
   );
+}
+
+function activateCellAfterModeSwitch(
+  panel: NotebookPanel,
+  cellId: string | null
+): void {
+  const widgets = panel.content.widgets;
+  if (widgets.length === 0) {
+    return;
+  }
+  let targetIndex = 0;
+  if (cellId) {
+    for (let i = 0; i < widgets.length; i++) {
+      if (widgets[i].model.id === cellId) {
+        targetIndex = i;
+        break;
+      }
+    }
+  }
+  panel.content.activeCellIndex = targetIndex;
+  // Defer scrollIntoView one frame so the layout swap from canvas → notebook
+  // has settled and the cell node has its final geometry.
+  requestAnimationFrame(() => {
+    const target = widgets[targetIndex];
+    if (target?.node?.isConnected) {
+      target.node.scrollIntoView({ block: 'center', behavior: 'auto' });
+    }
+  });
 }
 
 function updateModeButtonLabel(button: ToolbarButton, summary: boolean): void {
@@ -130,39 +168,94 @@ function toggleMode(panel: NotebookPanel): void {
   applyMode(panel, next);
 }
 
-function toggleActiveCellInclusion(panel: NotebookPanel): void {
+const INCLUDE_TOGGLE_CLASS = 'jp-CellLayout-includeToggle';
+
+const EYE_OPEN_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+
+const EYE_CLOSED_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+function setInclusionVisuals(
+  cellNode: HTMLElement,
+  button: HTMLButtonElement | null,
+  mode: 'summary' | 'edit'
+): void {
+  const excluded = mode === 'edit';
+  cellNode.classList.toggle('jp-CellLayout-cellExcluded', excluded);
+  if (button) {
+    button.classList.toggle(`${INCLUDE_TOGGLE_CLASS}--excluded`, excluded);
+    button.innerHTML = excluded ? EYE_CLOSED_SVG : EYE_OPEN_SVG;
+    button.title = excluded
+      ? 'Click to include this cell in the summary view'
+      : 'Click to exclude this cell from the summary view';
+    button.setAttribute(
+      'aria-label',
+      excluded ? 'Include cell in summary' : 'Exclude cell from summary'
+    );
+    button.setAttribute('aria-pressed', String(excluded));
+  }
+}
+
+function ensureIncludeToggleButton(
+  panel: NotebookPanel,
+  cellNode: HTMLElement,
+  cellId: string
+): HTMLButtonElement {
+  const existing = cellNode.querySelector(
+    `:scope > .${INCLUDE_TOGGLE_CLASS}`
+  ) as HTMLButtonElement | null;
+  if (existing) {
+    return existing;
+  }
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = INCLUDE_TOGGLE_CLASS;
+  // Stop event propagation so clicking the toggle doesn't activate / move
+  // focus to the cell. JL uses pointerdown for cell selection.
+  for (const evt of ['pointerdown', 'mousedown'] as const) {
+    btn.addEventListener(evt, e => e.stopPropagation());
+  }
+  btn.addEventListener('click', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleCellInclusionById(panel, cellId);
+  });
+  cellNode.appendChild(btn);
+  return btn;
+}
+
+function toggleCellInclusionById(panel: NotebookPanel, cellId: string): void {
   const s = state.get(panel);
   if (!s) {
     return;
   }
-  const activeCell = panel.content.activeCell;
-  if (!activeCell) {
-    return;
-  }
-  const cellId = activeCell.model.id;
-  const newMode = s.coordinator.toggleCellInclusion(cellId);
-  activeCell.node.classList.toggle(
-    'jp-CellLayout-cellExcluded',
-    newMode === 'edit'
-  );
+  s.coordinator.toggleCellInclusion(cellId);
+  refreshCellAffordances(panel);
   if (isSummaryMode(s.manager)) {
     s.canvas.refresh();
   }
 }
 
-function reapplyCellExclusionClasses(panel: NotebookPanel): void {
+function toggleActiveCellInclusion(panel: NotebookPanel): void {
+  const activeCell = panel.content.activeCell;
+  if (!activeCell) {
+    return;
+  }
+  toggleCellInclusionById(panel, activeCell.model.id);
+}
+
+function refreshCellAffordances(panel: NotebookPanel): void {
   const s = state.get(panel);
   if (!s) {
     return;
   }
   const layout = s.manager.read();
-  const widgets = panel.content.widgets;
-  for (const cellWidget of widgets) {
-    const mode = layout.cells[cellWidget.model.id]?.mode ?? 'summary';
-    cellWidget.node.classList.toggle(
-      'jp-CellLayout-cellExcluded',
-      mode === 'edit'
-    );
+  for (const cellWidget of panel.content.widgets) {
+    const cellId = cellWidget.model.id;
+    const mode = layout.cells[cellId]?.mode ?? 'summary';
+    const button = ensureIncludeToggleButton(panel, cellWidget.node, cellId);
+    setInclusionVisuals(cellWidget.node, button, mode);
   }
 }
 
@@ -283,6 +376,70 @@ function clearActiveCellExcelView(panel: NotebookPanel): void {
     return;
   }
   s.coordinator.setExcelLink(activeCell.model.id, null);
+  if (isSummaryMode(s.manager)) {
+    s.canvas.refresh();
+  }
+}
+
+// Tracks the page index of the most recently right-clicked page badge.
+// JL's contextMenu API doesn't pass DOM context to commands, so we capture
+// it on the document's contextmenu event (capture phase, before the menu
+// opens) and read it from the command handler.
+let lastPageBadgeIndex: number | null = null;
+
+function rememberPageBadgeOnContextMenu(): void {
+  document.addEventListener(
+    'contextmenu',
+    e => {
+      const target = e.target as HTMLElement | null;
+      const badge = target?.closest?.(
+        '.jp-CellLayout-pageNumber'
+      ) as HTMLElement | null;
+      if (!badge) {
+        return;
+      }
+      const raw = badge.dataset.pageIndex;
+      const parsed = raw === undefined ? NaN : parseInt(raw, 10);
+      lastPageBadgeIndex = Number.isFinite(parsed) ? parsed : null;
+    },
+    true
+  );
+}
+
+function insertPageRelative(
+  panel: NotebookPanel,
+  position: 'above' | 'below'
+): void {
+  const s = state.get(panel);
+  if (!s || lastPageBadgeIndex === null) {
+    return;
+  }
+  const targetIdx =
+    position === 'above' ? lastPageBadgeIndex : lastPageBadgeIndex + 1;
+  const result = s.coordinator.insertPageAt(targetIdx);
+  if (!result.ok) {
+    if (result.message) {
+      window.alert(result.message);
+    }
+    return;
+  }
+  if (isSummaryMode(s.manager)) {
+    s.canvas.refresh();
+  }
+}
+
+function deleteSelectedPage(panel: NotebookPanel): void {
+  const s = state.get(panel);
+  if (!s || lastPageBadgeIndex === null) {
+    return;
+  }
+  const result = s.coordinator.deletePageAt(lastPageBadgeIndex);
+  if (!result.ok) {
+    if (result.message) {
+      window.alert(result.message);
+    }
+    return;
+  }
   if (isSummaryMode(s.manager)) {
     s.canvas.refresh();
   }
@@ -434,9 +591,9 @@ function attachNotebook(panel: NotebookPanel): void {
     });
 
     applyMode(panel, isSummaryMode(manager));
-    reapplyCellExclusionClasses(panel);
+    refreshCellAffordances(panel);
 
-    coordinator.changed.connect(() => reapplyCellExclusionClasses(panel));
+    coordinator.changed.connect(() => refreshCellAffordances(panel));
     coordinator.settingsChanged.connect(() => {
       const s = state.get(panel);
       if (!s) {
@@ -562,6 +719,42 @@ const plugin: JupyterFrontEndPlugin<void> = {
         notebooks.currentWidget.content.activeCell !== null
     });
 
+    app.commands.addCommand(COMMAND_INSERT_PAGE_ABOVE, {
+      label: 'Cell Layout: Insert page above (right-clicked page)',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          insertPageRelative(panel, 'above');
+        }
+      },
+      isEnabled: () =>
+        notebooks.currentWidget !== null && lastPageBadgeIndex !== null
+    });
+
+    app.commands.addCommand(COMMAND_INSERT_PAGE_BELOW, {
+      label: 'Cell Layout: Insert page below (right-clicked page)',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          insertPageRelative(panel, 'below');
+        }
+      },
+      isEnabled: () =>
+        notebooks.currentWidget !== null && lastPageBadgeIndex !== null
+    });
+
+    app.commands.addCommand(COMMAND_DELETE_PAGE, {
+      label: 'Cell Layout: Delete this page (right-clicked page)',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          deleteSelectedPage(panel);
+        }
+      },
+      isEnabled: () =>
+        notebooks.currentWidget !== null && lastPageBadgeIndex !== null
+    });
+
     app.commands.addCommand(COMMAND_SHOW_INFO, {
       label: 'Cell Layout: Show info (debug)',
       execute: () => {
@@ -608,6 +801,9 @@ const plugin: JupyterFrontEndPlugin<void> = {
         COMMAND_REMOVE_PAGE,
         COMMAND_EXPORT_PDF,
         COMMAND_TOGGLE_CELL_INCLUSION,
+        COMMAND_INSERT_PAGE_ABOVE,
+        COMMAND_INSERT_PAGE_BELOW,
+        COMMAND_DELETE_PAGE,
         COMMAND_MARK_AS_EXCEL,
         COMMAND_CLEAR_EXCEL,
         COMMAND_SHOW_INFO
@@ -615,6 +811,31 @@ const plugin: JupyterFrontEndPlugin<void> = {
         palette.addItem({ command, category });
       }
     }
+
+    app.contextMenu.addItem({
+      command: COMMAND_TOGGLE_CELL_INCLUSION,
+      selector: '.jp-Notebook .jp-Cell',
+      rank: 11
+    });
+
+    rememberPageBadgeOnContextMenu();
+
+    app.contextMenu.addItem({
+      command: COMMAND_INSERT_PAGE_ABOVE,
+      selector: '.jp-CellLayout-pageNumber',
+      rank: 1
+    });
+    app.contextMenu.addItem({
+      command: COMMAND_INSERT_PAGE_BELOW,
+      selector: '.jp-CellLayout-pageNumber',
+      rank: 2
+    });
+    app.contextMenu.addItem({
+      command: COMMAND_DELETE_PAGE,
+      selector: '.jp-CellLayout-pageNumber',
+      rank: 3
+    });
+
 
     notebooks.widgetAdded.connect((_, panel) => attachNotebook(panel));
     for (const panel of notebooks.filter(() => true)) {

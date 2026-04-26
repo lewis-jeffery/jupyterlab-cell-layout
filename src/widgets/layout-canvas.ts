@@ -23,6 +23,7 @@ import { SummaryCellWidget, type SlotKey } from './summary-cell';
 import { mmToPx, pxToMm } from './units';
 
 const SNAP_MIN_SIZE = { width: 20, height: 15 };
+const PAGE_BREAK_HEIGHT_PX = 12;
 
 export class LayoutCanvas extends Widget {
   private _cells: SummaryCellWidget[] = [];
@@ -30,6 +31,7 @@ export class LayoutCanvas extends Widget {
   private _page: HTMLElement;
   private _currentPageSize: PageSize = 'A4';
   private _currentOrientation: PageOrientation = 'portrait';
+  private _activeCellId: string | null = null;
 
   constructor(
     private readonly coordinator: CellCoordinator,
@@ -186,7 +188,23 @@ export class LayoutCanvas extends Widget {
     }
   }
 
+  /**
+   * Id of the cell most recently interacted with on the canvas. Cleared on
+   * `consumeActiveCellId()`. Used to carry selection from summary mode back
+   * into edit mode.
+   */
+  get activeCellId(): string | null {
+    return this._activeCellId;
+  }
+
+  consumeActiveCellId(): string | null {
+    const id = this._activeCellId;
+    this._activeCellId = null;
+    return id;
+  }
+
   bringCellToFront(cellId: string): void {
+    this._activeCellId = cellId;
     const group = this._groups.get(cellId);
     if (!group) {
       return;
@@ -248,14 +266,19 @@ export class LayoutCanvas extends Widget {
       const label = document.createElement('div');
       label.className = 'jp-CellLayout-pageNumber';
       label.textContent = `Page ${i + 1} of ${count}`;
+      label.dataset.pageIndex = String(i);
+      label.title = 'Right-click for page actions';
       // Anchor at the bottom-right of page i: 18px above the bottom edge of the page
       label.style.top = `${pageHeightPx * (i + 1) - 18}px`;
       this._page.appendChild(label);
       if (i > 0) {
         const brk = document.createElement('div');
         brk.className = 'jp-CellLayout-pageBreak';
-        brk.style.top = `${pageHeightPx * i}px`;
+        // Centre the gap-strip on the boundary so cells straddling the page
+        // break are visually cut in half — an obvious cue to move them.
+        brk.style.top = `${pageHeightPx * i - PAGE_BREAK_HEIGHT_PX / 2}px`;
         brk.style.width = `${widthPx}px`;
+        brk.style.height = `${PAGE_BREAK_HEIGHT_PX}px`;
         this._page.appendChild(brk);
       }
     }

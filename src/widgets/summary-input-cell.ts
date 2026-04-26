@@ -199,10 +199,18 @@ export class SummaryInputCell extends Widget {
       data: { 'text/markdown': trimmed },
       trusted: true
     });
+    // Attach BEFORE rendering so JL's latex typesetter (run at the end of
+    // renderModel) sees a node that's already in the DOM. Typesetting a
+    // detached node leaves `$…$` as raw text.
+    renderer.addClass('jp-CellLayout-md');
+    body.appendChild(renderer.node);
     try {
       await renderer.renderModel(model);
-      renderer.addClass('jp-CellLayout-md');
-      body.appendChild(renderer.node);
+      // Belt-and-braces: re-typeset explicitly. typeset() is idempotent on
+      // already-rendered math, so the second pass is harmless and catches
+      // cases where the in-renderModel pass missed (e.g. detached parent
+      // chains during initial layout).
+      this._rendermime.latexTypesetter?.typeset(renderer.node);
       for (const a of Array.from(renderer.node.querySelectorAll('a'))) {
         a.setAttribute('target', '_blank');
         a.setAttribute('rel', 'noopener noreferrer');

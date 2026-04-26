@@ -1,6 +1,6 @@
 # JupyterLab Cell Layout — Task List
 
-_Last updated: 2026-04-26 (Excel range view — Phase 1)_
+_Last updated: 2026-04-27 (UX polish merged; Excel Phase 1 resumed)_
 
 Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · ⏸ deferred
 
@@ -27,13 +27,24 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 
 **Smart alignment guides:** #30 — during drag and resize, snap to nearby cell edges and centres, plus active-page edges and centres. 2 mm tolerance. Same-page only. Smart-guide snap takes precedence over the grid; falls back to grid when no smart match. User-configurable via the `smartGuides` setting (default on). Resize snaps the moving edge only; centre candidates are excluded for resize.
 
-**Excel range view — Phase 1:** #31 — a layout cell can mirror an open Excel workbook's named range via xlwings. Read-only, manual refresh. Comm bridge between frontend and a kernel-side helper (`jupyterlab_cell_layout.excel_bridge.register()`). Layout metadata gains `cells[*].excel = { workbook, sheet, range }`. Command palette: "Mark active cell as Excel range view" prompts for the three values; "Clear Excel range link" reverts.
+**UX polish from real use (delivered to `main`):**
+
+- **#36** ✅ Eye / hide button on cells in edit mode + right-click context menu item, both toggling inclusion in summary view.
+- **#37** ✅ More visible page break in summary mode — 12-px grey "gap" strip with subtle drop-shadows, sitting above cells so any cell straddling the boundary is visibly cut in half. PDF export still hides the strip.
+- **#38** ✅ Cell selected in summary view becomes the active cell when switching to edit mode (scrolled into view). No prior click → jump to the top.
+- **#39** ✅ LaTeX in markdown cells now renders in summary view. Root cause: rendering into a detached node, so JL's MathJax typesetter had nothing to typeset. Fix attaches the renderer node before `renderModel`, plus an explicit `latexTypesetter.typeset()` safety pass.
+- **#40** ✅ Insert / delete pages in the middle of the summary view. Right-click any "Page N of M" badge → menu offers _Insert page above_, _Insert page below_, _Delete this page_. Render-aware overlap check prevents false "page is occupied" errors when only empty output-slot metadata sits on the page.
+
+## 🟢 In progress
+
+**Excel range view — Phase 1 (resumed 2026-04-27 on `feat/excel-phase-1`):** #31 — a layout cell can mirror an open Excel workbook's named range via xlwings. Read-only, manual refresh. Comm bridge between frontend and a kernel-side helper (`jupyterlab_cell_layout.excel_bridge.register()`). Layout metadata gains `cells[*].excel = { workbook, sheet, range }`. Command palette: "Mark active cell as Excel range view" prompts for the three values; "Clear Excel range link" reverts. **Open bug:** after running the Mark command, the debug info dialog does not show the `excel` field on the affected cell — metadata may not be persisting. Diagnosing now.
 
 ⏳ **Excel — future phases (not started):**
 - **#32** Phase 2: editable sub-ranges (write back via xlwings on commit).
 - **#33** Phase 3: live sync via 1 s poll + diff push.
 - **#34** Phase 4: formatting passthrough (colours, bold, number formats, merged cells).
 - **#35** Phase 5: robustness (Excel-not-running affordance, debounced concurrent edits).
+- **#41** Multi-cell select + move (drag-marquee, shift-click; "select all above/below active cell" command). Phase 4 item.
 
 ## ⏸ Deferred
 

@@ -1,4 +1,5 @@
 import type { ICellModel, ICodeCellModel } from '@jupyterlab/cells';
+import type * as nbformat from '@jupyterlab/nbformat';
 import type { INotebookModel } from '@jupyterlab/notebook';
 import { ISignal, Signal } from '@lumino/signaling';
 
@@ -16,6 +17,7 @@ import {
   type OutputSlotId,
   PAGE_SIZES_MM
 } from './metadata';
+import { OutputProcessor } from './output-processor';
 
 export const PAGE_MARGIN_MM = 20;
 export const ROW_GAP_MM = 5;
@@ -172,6 +174,69 @@ export function pruneStaleCells(
   return result;
 }
 
+/**
+ * Shift the y-coordinate of input + output positions by `deltaMm` for any
+ * slot whose top edge is at or below `yThresholdMm`. Used by page insert /
+ * delete to make room or close gaps. Operates on every cell regardless of
+ * `mode` — excluded cells keep meaningful positions for when re-included.
+ */
+export function shiftCellsAtOrBelow(
+  cells: Record<string, ICellLayout>,
+  yThresholdMm: number,
+  deltaMm: number
+): Record<string, ICellLayout> {
+  const out: Record<string, ICellLayout> = {};
+  for (const [id, cell] of Object.entries(cells)) {
+    const input =
+      cell.input.position.y >= yThresholdMm
+        ? {
+            ...cell.input,
+            position: {
+              ...cell.input.position,
+              y: cell.input.position.y + deltaMm
+            }
+          }
+        : cell.input;
+    const outputs = cell.outputs.map(o =>
+      o.position.y >= yThresholdMm
+        ? { ...o, position: { ...o.position, y: o.position.y + deltaMm } }
+        : o
+    );
+    out[id] = { ...cell, input, outputs };
+  }
+  return out;
+}
+
+/**
+ * Returns true if any summary-mode cell on the canvas overlaps the y-band
+ * `[topMm, bottomMm)`. Used to refuse deletion of a non-empty page.
+ */
+export function summaryCellsOnPage(
+  cells: Record<string, ICellLayout>,
+  topMm: number,
+  bottomMm: number
+): boolean {
+  for (const cell of Object.values(cells)) {
+    if (cell.mode !== 'summary') {
+      continue;
+    }
+    const inputBot = cell.input.position.y + cell.input.size.height;
+    if (inputBot > topMm && cell.input.position.y < bottomMm) {
+      return true;
+    }
+    for (const o of cell.outputs) {
+      if (!o.enabled) {
+        continue;
+      }
+      const outBot = o.position.y + o.size.height;
+      if (outBot > topMm && o.position.y < bottomMm) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export interface ICellEntry {
   cellModel: ICellModel;
   layout: ICellLayout;
@@ -277,6 +342,128 @@ export class CellCoordinator {
     }));
     this._settingsChanged.emit();
     return true;
+  }
+
+  /**
+   * Insert a new blank page at index `idx` (0-based). Cells whose top edge
+   * is at or below `idx * pageHeight` shift down by one pageHeight to make
+   * room. Refuses if `page_count` is already at the cap.
+   *
+   * Range of `idx`: 0..pageCount inclusive. `idx === pageCount` is the same
+   * as appending a page.
+   */
+  insertPageAt(idx: number): { ok: boolean; message?: string } {
+    const layout = this.manager.read();
+    if (layout.settings.page_count >= MAX_PAGE_COUNT) {
+      return {
+        ok: false,
+        message: `Page limit reached (${MAX_PAGE_COUNT}).`
+      };
+    }
+    const clampedIdx = Math.max(
+      0,
+      Math.min(idx, layout.settings.page_count)
+    );
+    const pageHeight = pageHeightMmFor(layout.settings);
+    const insertY = clampedIdx * pageHeight;
+    this.manager.update(l => ({
+      ...l,
+      settings: { ...l.settings, page_count: l.settings.page_count + 1 },
+      cells: shiftCellsAtOrBelow(l.cells, insertY, pageHeight)
+    }));
+    this._settingsChanged.emit();
+    this._changed.emit();
+    return { ok: true };
+  }
+
+  /**
+   * Delete page `idx` (0-based). Refuses if any summary-mode cell *renders*
+   * on that page (input box, or an output slot whose cell currently has
+   * routed items for that slot) or if it's the only page. Cells below shift
+   * up by one pageHeight to close the gap.
+   *
+   * The check matches `summary-cell.ts` rendering rules: empty / unrouted
+   * output slots are not rendered and so don't block deletion, even though
+   * their saved metadata may sit on this page.
+   */
+  deletePageAt(idx: number): { ok: boolean; message?: string } {
+    const layout = this.manager.read();
+    if (layout.settings.page_count <= 1) {
+      return { ok: false, message: 'Cannot delete the only page.' };
+    }
+    const clampedIdx = Math.max(
+      0,
+      Math.min(idx, layout.settings.page_count - 1)
+    );
+    const pageHeight = pageHeightMmFor(layout.settings);
+    const top = clampedIdx * pageHeight;
+    const bot = top + pageHeight;
+    const blocker = this._findRenderedSlotOnPage(top, bot);
+    if (blocker !== null) {
+      return {
+        ok: false,
+        message: `Page ${clampedIdx + 1} has cells on it. Move or exclude them first.`
+      };
+    }
+    this.manager.update(l => ({
+      ...l,
+      settings: { ...l.settings, page_count: l.settings.page_count - 1 },
+      cells: shiftCellsAtOrBelow(l.cells, bot, -pageHeight)
+    }));
+    this._settingsChanged.emit();
+    this._changed.emit();
+    return { ok: true };
+  }
+
+  /**
+   * Walk live cell models and check whether any *rendered* slot overlaps the
+   * y-band [topMm, bottomMm). Returns the offending cell id, or null if the
+   * page is clear. Mirrors summary-cell.ts: an output slot only counts when
+   * its cell currently has items routed to it.
+   */
+  private _findRenderedSlotOnPage(
+    topMm: number,
+    bottomMm: number
+  ): string | null {
+    const overlaps = (
+      yMm: number,
+      hMm: number
+    ): boolean => yMm + hMm > topMm && yMm < bottomMm;
+    for (const entry of this.list()) {
+      if (entry.layout.mode !== 'summary') {
+        continue;
+      }
+      const input = entry.layout.input;
+      if (overlaps(input.position.y, input.size.height)) {
+        return entry.cellModel.id;
+      }
+      if (entry.cellModel.type !== 'code') {
+        continue;
+      }
+      const codeCell = entry.cellModel as ICodeCellModel;
+      if (codeCell.outputs.length === 0) {
+        continue;
+      }
+      const items: nbformat.IOutput[] = [];
+      for (let i = 0; i < codeCell.outputs.length; i++) {
+        items.push(codeCell.outputs.get(i).toJSON() as nbformat.IOutput);
+      }
+      const routed = new OutputProcessor().route(items);
+      for (const o of entry.layout.outputs) {
+        if (!o.enabled) {
+          continue;
+        }
+        const slotItems =
+          o.output_id === 'output_a' ? routed.output_a : routed.output_b;
+        if (slotItems.length === 0) {
+          continue;
+        }
+        if (overlaps(o.position.y, o.size.height)) {
+          return entry.cellModel.id;
+        }
+      }
+    }
+    return null;
   }
 
   pruneStaleLayouts(): void {
