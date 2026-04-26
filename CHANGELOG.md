@@ -2,6 +2,11 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## 0.3.0 — 2026-04-27
+
+- **Insert / delete pages in the middle of the summary canvas** (#40). Right-click any "Page N of M" badge in the bottom-right of a page → menu offers _Insert page above_, _Insert page below_, _Delete this page_. Insert shifts cells with top y ≥ boundary down by one page-height; delete shifts cells below up by one page-height. Delete refuses if any summary-mode cell currently *renders* on the page (matches the rendering rules so empty / unrouted output slots don't cause a false "page is occupied" error).
+- **Idempotent `install.sh`**. Re-running the installer on an already-installed system no longer requires a manual `rm -rf` of the labextension share directory; the script now uninstalls + cleans orphaned labextension directories across all jupyter data paths before reinstalling.
+
 ## 0.2.0 — 2026-04-26
 
 UX polish from real use:
