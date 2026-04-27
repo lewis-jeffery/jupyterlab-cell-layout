@@ -1,4 +1,8 @@
 import type { ICellModel } from '@jupyterlab/cells';
+import {
+  CodeEditorWrapper,
+  type IEditorServices
+} from '@jupyterlab/codeeditor';
 import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 
@@ -47,6 +51,7 @@ export interface IInputLayoutCallbacks {
 export interface IInputCellOptions {
   displayLabel: string;
   rendermime?: IRenderMimeRegistry;
+  editorServices?: IEditorServices;
   callbacks?: IInputLayoutCallbacks;
 }
 
@@ -80,6 +85,8 @@ export class SummaryInputCell extends Widget {
   private _resizeCtl?: IResizeController;
   private _displayLabel: string;
   private _rendermime?: IRenderMimeRegistry;
+  private _editorServices?: IEditorServices;
+  private _editor?: CodeEditorWrapper;
   private _callbacks?: IInputLayoutCallbacks;
 
   constructor(
@@ -91,6 +98,7 @@ export class SummaryInputCell extends Widget {
     this._inputLayout = layout;
     this._displayLabel = options.displayLabel;
     this._rendermime = options.rendermime;
+    this._editorServices = options.editorServices;
     this._callbacks = options.callbacks;
     this.addClass('jp-CellLayout-input');
     this.addClass(`jp-CellLayout-input-${cellModel.type}`);
@@ -142,6 +150,8 @@ export class SummaryInputCell extends Widget {
   dispose(): void {
     this._dragCtl?.dispose();
     this._resizeCtl?.dispose();
+    this._editor?.dispose();
+    this._editor = undefined;
     super.dispose();
   }
 
@@ -162,6 +172,13 @@ export class SummaryInputCell extends Widget {
   }
 
   private async _render(): Promise<void> {
+    // Tear down any prior editor before clearing the DOM. CodeMirror needs
+    // its widget lifecycle observed cleanly; just reaping the DOM nodes
+    // would leak the editor's internal state.
+    if (this._editor) {
+      this._editor.dispose();
+      this._editor = undefined;
+    }
     const n = this.node;
     n.replaceChildren();
 
@@ -178,12 +195,44 @@ export class SummaryInputCell extends Widget {
 
     if (this.cellModel.type === 'markdown' && this._rendermime) {
       await this._renderMarkdown(body, source);
+    } else if (this._editorServices) {
+      this._renderCodeEditor(body);
     } else {
+      // Fallback when editor services aren't available — keeps the widget
+      // useful in unit tests / standalone construction.
       const pre = document.createElement('pre');
       pre.className = 'jp-CellLayout-inputCode';
       pre.textContent = source;
       body.appendChild(pre);
     }
+  }
+
+  /**
+   * Render the cell's source via JL's CodeMirror editor, bound directly to
+   * the cell's model. The editor is read-only in this stage; later stages
+   * will toggle editability and add a Run button.
+   *
+   * Two views (the notebook's own cell editor and this one) share the same
+   * model — JL's collaborative-aware sharedModel — so edits propagate
+   * automatically without a manual subscribe loop.
+   */
+  private _renderCodeEditor(body: HTMLElement): void {
+    if (!this._editorServices) {
+      return;
+    }
+    const wrapper = new CodeEditorWrapper({
+      factory: this._editorServices.factoryService.newInlineEditor,
+      model: this.cellModel,
+      editorOptions: {
+        config: {
+          readOnly: true,
+          lineNumbers: false
+        }
+      }
+    });
+    wrapper.addClass('jp-CellLayout-inputEditor');
+    body.appendChild(wrapper.node);
+    this._editor = wrapper;
   }
 
   private async _renderMarkdown(

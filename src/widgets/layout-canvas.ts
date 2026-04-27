@@ -1,3 +1,4 @@
+import type { IEditorServices } from '@jupyterlab/codeeditor';
 import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 
@@ -37,7 +38,8 @@ export class LayoutCanvas extends Widget {
     private readonly coordinator: CellCoordinator,
     private readonly manager: MetadataManager,
     private readonly rendermime?: IRenderMimeRegistry,
-    private readonly excelBridge?: ExcelBridge
+    private readonly excelBridge?: ExcelBridge,
+    private readonly editorServices?: IEditorServices
   ) {
     super();
     this.addClass('jp-CellLayout-root');
@@ -91,6 +93,7 @@ export class LayoutCanvas extends Widget {
         coordinator: this.coordinator,
         rendermime: this.rendermime,
         excelBridge: this.excelBridge,
+        editorServices: this.editorServices,
         onInteract: () => this.bringCellToFront(cellId),
         snapHandlerFactory: (id, slot) => this._snapHandlerFor(id, slot)
       });

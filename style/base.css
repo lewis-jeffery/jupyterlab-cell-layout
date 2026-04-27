@@ -224,6 +224,35 @@
   color: var(--jp-content-font-color1, #000);
 }
 
+/* JL CodeMirror editor embedded in a summary code-cell input. The wrapper
+ * fills the body; the inner cm-editor inherits the smaller summary font
+ * size so embedded code looks consistent with the rest of the canvas. */
+.jp-CellLayout-inputEditor {
+  width: 100%;
+  height: 100%;
+}
+
+.jp-CellLayout-inputEditor .cm-editor {
+  height: 100%;
+  font-size: 10px;
+  background: transparent;
+}
+
+.jp-CellLayout-inputEditor .cm-scroller {
+  font-family: var(
+    --jp-code-font-family,
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace
+  );
+}
+
+.jp-CellLayout-inputEditor .cm-editor.cm-focused {
+  outline: none;
+}
+
 .jp-CellLayout-md {
   font-size: 11px;
   line-height: 1.4;

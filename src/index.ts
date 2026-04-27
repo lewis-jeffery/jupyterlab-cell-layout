@@ -8,6 +8,7 @@ import {
   ToolbarButton,
   showDialog
 } from '@jupyterlab/apputils';
+import { IEditorServices } from '@jupyterlab/codeeditor';
 import { INotebookTracker, NotebookPanel } from '@jupyterlab/notebook';
 import {
   ISettingRegistry,
@@ -63,6 +64,11 @@ const userDefaults: IUserDefaults = {
   orientation: 'portrait',
   smartGuides: true
 };
+
+// Captured at plugin activation; used by `attachNotebook` to pass through to
+// LayoutCanvas → SummaryInputCell so summary-mode code cells can render via
+// JL's CodeMirror editor.
+let editorServicesRef: IEditorServices | null = null;
 
 interface INotebookState {
   manager: MetadataManager;
@@ -593,7 +599,8 @@ function attachNotebook(panel: NotebookPanel): void {
         coordinator,
         manager,
         panel.content.rendermime,
-        excelBridge
+        excelBridge,
+        editorServicesRef ?? undefined
       );
 
     const layout = panel.layout as BoxLayout;
@@ -710,15 +717,17 @@ const plugin: JupyterFrontEndPlugin<void> = {
   description:
     'Drag-and-drop cell layout for engineering design documentation with PDF export',
   autoStart: true,
-  requires: [INotebookTracker],
+  requires: [INotebookTracker, IEditorServices],
   optional: [ISettingRegistry, ICommandPalette],
   activate: (
     app: JupyterFrontEnd,
     notebooks: INotebookTracker,
+    editorServices: IEditorServices,
     settingRegistry: ISettingRegistry | null,
     palette: ICommandPalette | null
   ) => {
     console.log('JupyterLab extension jupyterlab-cell-layout is activated!');
+    editorServicesRef = editorServices;
 
     app.commands.addCommand(COMMAND_TOGGLE_MODE, {
       label: 'Cell Layout: Toggle summary / edit mode',
