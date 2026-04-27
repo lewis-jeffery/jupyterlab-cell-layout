@@ -46,6 +46,7 @@ export class LayoutCanvas extends Widget {
   private _hoverLinkDispose: (() => void) | null = null;
   private _newCellDismissDispose: (() => void) | null = null;
   private _pinDispose: (() => void) | null = null;
+  private _gotoDispose: (() => void) | null = null;
 
   constructor(
     private readonly coordinator: CellCoordinator,
@@ -84,6 +85,7 @@ export class LayoutCanvas extends Widget {
     this._wireHoverLinking();
     this._wireNewCellDismiss();
     this._wirePinHandling();
+    this._wireGotoButton();
   }
 
   /**
@@ -183,6 +185,49 @@ export class LayoutCanvas extends Widget {
     };
   }
 
+  /**
+   * Delegated click handler for the per-slot "go-to next related" buttons.
+   * The button is only visible (per CSS) when its slot is pinned, so a
+   * click on it always means "scroll to the next slot of the same cell"
+   * — useful when input and outputs are pages apart and pin alone tells
+   * the user *that* a slot exists elsewhere but not *where*. Cycles in
+   * DOM order (input → output_a → output_b → input → …).
+   */
+  private _wireGotoButton(): void {
+    const onClick = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement | null;
+      const btn = target?.closest?.(
+        '.jp-CellLayout-gotoButton'
+      ) as HTMLElement | null;
+      if (!btn) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      const slot = btn.closest('[data-cell-id]') as HTMLElement | null;
+      if (!slot) {
+        return;
+      }
+      const cellId = slot.dataset.cellId;
+      if (!cellId) {
+        return;
+      }
+      const related = Array.from(
+        this._page.querySelectorAll(`[data-cell-id="${cellId}"]`)
+      ) as HTMLElement[];
+      if (related.length <= 1) {
+        return;
+      }
+      const idx = related.indexOf(slot);
+      const next = related[(idx + 1) % related.length];
+      next.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    };
+    this._page.addEventListener('click', onClick);
+    this._gotoDispose = () => {
+      this._page.removeEventListener('click', onClick);
+    };
+  }
+
   private _updatePinHighlight(): void {
     const PIN = 'jp-CellLayout-cellGroupPinned';
     this._page
@@ -246,6 +291,8 @@ export class LayoutCanvas extends Widget {
     this._newCellDismissDispose = null;
     this._pinDispose?.();
     this._pinDispose = null;
+    this._gotoDispose?.();
+    this._gotoDispose = null;
     this._clearCells();
     super.dispose();
   }

@@ -131,6 +131,14 @@ export class SummaryOutputCell extends Widget {
     label.textContent = this._displayLabel;
     n.appendChild(label);
 
+    const goto = document.createElement('button');
+    goto.type = 'button';
+    goto.className = 'jp-CellLayout-gotoButton';
+    goto.title = 'Go to next related slot';
+    goto.setAttribute('aria-label', 'Go to next related slot');
+    goto.textContent = '→';
+    n.appendChild(goto);
+
     const body = document.createElement('div');
     body.className = 'jp-CellLayout-outputBody';
     n.appendChild(body);

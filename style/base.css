@@ -132,6 +132,38 @@
   outline-offset: 2px;
 }
 
+/* Go-to button: small "→" in the bottom-right of every slot. Hidden by
+ * default; appears only when the slot is part of the pinned group. Click
+ * scrolls the canvas to the next related slot (input → output_a →
+ * output_b → input → …). Useful when slots are pages apart and the user
+ * needs to jump between them. */
+.jp-CellLayout-gotoButton {
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  z-index: 60;
+  width: 16px;
+  height: 14px;
+  padding: 0;
+  font-size: 10px;
+  line-height: 12px;
+  border: 1px solid var(--jp-border-color2, #ccc);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--jp-success-color1, #4caf50);
+  border-radius: 2px;
+  cursor: pointer;
+  user-select: none;
+  display: none;
+}
+
+.jp-CellLayout-cellGroupPinned .jp-CellLayout-gotoButton {
+  display: inline-block;
+}
+
+.jp-CellLayout-gotoButton:hover {
+  background: var(--jp-success-color3, #c8e6c9);
+}
+
 /* Newly-added cell highlight: a more pronounced ring with a slow pulse,
  * applied to every slot of a cell the user just inserted in edit mode.
  * The pulse drops when the user first interacts with the cell (drag,
@@ -152,13 +184,18 @@
   }
 }
 
-/* Suppress hover-link, pinned, and new-cell highlights during PDF export. */
+/* Suppress hover-link, pinned, new-cell highlights, and the goto button
+ * during PDF export. */
 .jp-CellLayout-exporting .jp-CellLayout-cellGroupHover,
 .jp-CellLayout-exporting .jp-CellLayout-cellGroupPinned,
 .jp-CellLayout-exporting .jp-CellLayout-newCell {
   outline: none;
   box-shadow: none;
   animation: none;
+}
+
+.jp-CellLayout-exporting .jp-CellLayout-gotoButton {
+  display: none !important;
 }
 
 .jp-CellLayout-handle {

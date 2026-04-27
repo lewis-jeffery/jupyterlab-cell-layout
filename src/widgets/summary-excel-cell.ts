@@ -191,6 +191,14 @@ export class SummaryExcelCell extends Widget {
     label.textContent = `${this._displayLabel} · xl`;
     n.appendChild(label);
 
+    const goto = document.createElement('button');
+    goto.type = 'button';
+    goto.className = 'jp-CellLayout-gotoButton';
+    goto.title = 'Go to next related slot';
+    goto.setAttribute('aria-label', 'Go to next related slot');
+    goto.textContent = '→';
+    n.appendChild(goto);
+
     const refresh = document.createElement('button');
     refresh.className = 'jp-CellLayout-excelRefresh';
     refresh.type = 'button';
