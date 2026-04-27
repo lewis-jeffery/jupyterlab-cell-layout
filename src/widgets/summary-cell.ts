@@ -1,4 +1,5 @@
 import type { ICellModel, ICodeCellModel } from '@jupyterlab/cells';
+import type { IEditorServices } from '@jupyterlab/codeeditor';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import type { Widget } from '@lumino/widgets';
@@ -24,6 +25,8 @@ export interface ISummaryCellOptions {
   coordinator?: CellCoordinator;
   rendermime?: IRenderMimeRegistry;
   excelBridge?: ExcelBridge;
+  editorServices?: IEditorServices;
+  onRunCell?: (cellId: string) => void;
   onInteract?: () => void;
   snapHandlerFactory?: ISnapHandlerFactory;
 }
@@ -116,9 +119,12 @@ export class SummaryCellWidget {
           snapHandler: snapHandlerFactory?.(id, 'input') ?? undefined
         }
       : undefined;
+    const onRunCell = options.onRunCell;
     this._main = new SummaryInputCell(cellModel, layout.input, {
       displayLabel: indexLabel,
       rendermime,
+      editorServices: options.editorServices,
+      onRun: onRunCell ? () => onRunCell(id) : undefined,
       callbacks: inputCallbacks
     });
     this._main.node.dataset.cellId = id;

@@ -121,6 +121,11 @@ export class SummaryOutputCell extends Widget {
     const n = this.node;
     n.replaceChildren();
 
+    const grip = document.createElement('div');
+    grip.className = 'jp-CellLayout-dragHandle';
+    grip.setAttribute('aria-hidden', 'true');
+    n.appendChild(grip);
+
     const label = document.createElement('div');
     label.className = 'jp-CellLayout-label';
     label.textContent = this._displayLabel;

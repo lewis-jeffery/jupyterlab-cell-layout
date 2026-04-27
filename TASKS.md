@@ -1,6 +1,6 @@
 # JupyterLab Cell Layout — Task List
 
-_Last updated: 2026-04-27 (UX polish merged; Excel Phase 1 resumed)_
+_Last updated: 2026-04-27 (v0.4.0 shipped; editable-summary work begun)_
 
 Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · ⏸ deferred
 
@@ -37,10 +37,22 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 
 ## 🟢 In progress
 
-**Excel range view — Phase 1 (resumed 2026-04-27 on `feat/excel-phase-1`):** #31 — a layout cell can mirror an open Excel workbook's named range via xlwings. Read-only, manual refresh. Comm bridge between frontend and a kernel-side helper (`jupyterlab_cell_layout.excel_bridge.register()`). Layout metadata gains `cells[*].excel = { workbook, sheet, range }`. Command palette: "Mark active cell as Excel range view" prompts for the three values; "Clear Excel range link" reverts. **Open bug:** after running the Mark command, the debug info dialog does not show the `excel` field on the affected cell — metadata may not be persisting. Diagnosing now.
+**Editable summary view — code-cell-driven workflow (started 2026-04-27 on `feat/editable-summary`):** #42 — major architectural shift: summary mode becomes a place to edit + run code cells in place, not just view them. The user's intended workflow is to put data in code cells (rather than Excel) and adjust + re-run a few values directly in the summary view to iterate. Output already updates reactively through the existing `SummaryOutputCell` once the cell re-runs, so most of the wiring is on the input side.
+
+Stages:
+- **A** ⬜ Wire JL's CodeMirror editor into `SummaryInputCell` for code cells, read-only initially. Confirm the editor renders source with syntax highlighting and tracks model changes from edit-mode.
+- **B** ⬜ Enable editing — confirm edits flow back through the shared cell model to the original notebook cell.
+- **C** ⬜ Add a Run button (top-right of code cells); click → `CodeCell.execute(notebookCell, sessionContext)`. Surface busy/error states.
+- **D** ⬜ Markdown cells get an "edit / rendered" toggle in the same place; rendered by default.
+- **E** ⬜ Per-cell or per-notebook toggle so users with read-only summaries don't change behaviour. Default to enabled for new notebooks.
+- **F** ⬜ Polish: editor sizing strategy (auto-grow vs scroll), focus handling, error states, keyboard execution shortcut (Shift+Enter).
+
+Ships as v0.5.0 when complete.
+
+**Excel range view — shipped in v0.4.0 (`main` at `08e8d8b`):** #31 — read-only mirror of an open Excel named range via xlwings, with live sync (~1 s) and per-cell horizontal alignment passthrough. Mac-only for now; Windows COM is a Phase 5 prerequisite for any PyPI publish.
 
 ⏳ **Excel — future phases:**
-- **#32** ⏸ Phase 2 (editable sub-ranges) — **deprioritised** under the one-way-display model: editing happens in Excel itself; summary is read-only for distribution.
+- **#32** ⏸ Phase 2 (editable sub-ranges) — **dropped**: real-use surfaced that Excel itself is awkward in this workflow. The editable-summary work (#42) supersedes the Excel-data path for the user's primary use case. Excel link remains available for genuinely-Excel-source-of-truth scenarios.
 - **#33** ✅ Phase 3 (live sync via 1 s poll + diff push): persistent comm, kernel daemon polling thread, `subscribe` / `unsubscribe` / `read` message types, polling pauses while user code executes.
 - **#34** 🟡 Phase 4 (formatting passthrough): **alignment shipped on Mac**. Bold / italic / font colour / fill colour are out of scope on Mac because Excel for Mac's AppleScript bridge returns the `k.missing_value` sentinel for `font.bold` / `font.color` (even per-cell) and doesn't expose a working `interior` property at all. The `formats` payload structure is in place — the Windows code path (#35) can populate the omitted fields without a frontend change. A possible Mac fallback is to read the saved `.xlsx` via `openpyxl` and watch the file mtime for changes; not implemented (means user must save in Excel before formatting changes propagate). Number formats and merged cells also deferred.
 - **#35** ⬜ Phase 5: robustness (Excel-not-running affordance, debounced concurrent edits, **Windows COM `pythoncom.CoInitialize()` per polling thread — required before any PyPI publish**, and the `bold` / `italic` / `fg` / `bg` properties land here on Windows because COM exposes them properly).

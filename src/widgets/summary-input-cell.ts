@@ -1,4 +1,8 @@
 import type { ICellModel } from '@jupyterlab/cells';
+import {
+  CodeEditorWrapper,
+  type IEditorServices
+} from '@jupyterlab/codeeditor';
 import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 
@@ -47,6 +51,8 @@ export interface IInputLayoutCallbacks {
 export interface IInputCellOptions {
   displayLabel: string;
   rendermime?: IRenderMimeRegistry;
+  editorServices?: IEditorServices;
+  onRun?: () => void;
   callbacks?: IInputLayoutCallbacks;
 }
 
@@ -80,7 +86,15 @@ export class SummaryInputCell extends Widget {
   private _resizeCtl?: IResizeController;
   private _displayLabel: string;
   private _rendermime?: IRenderMimeRegistry;
+  private _editorServices?: IEditorServices;
+  private _editor?: CodeEditorWrapper;
+  private _onRun?: () => void;
   private _callbacks?: IInputLayoutCallbacks;
+  // Markdown cells start in rendered mode and flip to source-editor mode
+  // via the in-cell ✎ button. Transient (per-widget-instance) state — a
+  // canvas refresh resets to rendered, which is acceptable since edits
+  // already persist via the shared cell model.
+  private _markdownEditing = false;
 
   constructor(
     private readonly cellModel: ICellModel,
@@ -91,6 +105,8 @@ export class SummaryInputCell extends Widget {
     this._inputLayout = layout;
     this._displayLabel = options.displayLabel;
     this._rendermime = options.rendermime;
+    this._editorServices = options.editorServices;
+    this._onRun = options.onRun;
     this._callbacks = options.callbacks;
     this.addClass('jp-CellLayout-input');
     this.addClass(`jp-CellLayout-input-${cellModel.type}`);
@@ -142,6 +158,8 @@ export class SummaryInputCell extends Widget {
   dispose(): void {
     this._dragCtl?.dispose();
     this._resizeCtl?.dispose();
+    this._editor?.dispose();
+    this._editor = undefined;
     super.dispose();
   }
 
@@ -162,8 +180,20 @@ export class SummaryInputCell extends Widget {
   }
 
   private async _render(): Promise<void> {
+    // Tear down any prior editor before clearing the DOM. CodeMirror needs
+    // its widget lifecycle observed cleanly; just reaping the DOM nodes
+    // would leak the editor's internal state.
+    if (this._editor) {
+      this._editor.dispose();
+      this._editor = undefined;
+    }
     const n = this.node;
     n.replaceChildren();
+
+    const grip = document.createElement('div');
+    grip.className = 'jp-CellLayout-dragHandle';
+    grip.setAttribute('aria-hidden', 'true');
+    n.appendChild(grip);
 
     const label = document.createElement('div');
     label.className = 'jp-CellLayout-label';
@@ -177,13 +207,102 @@ export class SummaryInputCell extends Widget {
     const source = coerceText(this.cellModel.sharedModel.getSource());
 
     if (this.cellModel.type === 'markdown' && this._rendermime) {
-      await this._renderMarkdown(body, source);
+      if (this._markdownEditing && this._editorServices) {
+        this._renderCodeEditor(body);
+      } else {
+        await this._renderMarkdown(body, source);
+      }
+      if (this._editorServices) {
+        this._renderMarkdownToggleButton(n);
+      }
+    } else if (this._editorServices) {
+      this._renderCodeEditor(body);
+      if (this.cellModel.type === 'code' && this._onRun) {
+        this._renderRunButton(n);
+      }
     } else {
+      // Fallback when editor services aren't available — keeps the widget
+      // useful in unit tests / standalone construction.
       const pre = document.createElement('pre');
       pre.className = 'jp-CellLayout-inputCode';
       pre.textContent = source;
       body.appendChild(pre);
     }
+  }
+
+  /**
+   * Toggle button for markdown cells: ✎ when rendered (click → enter
+   * source-edit mode), ✓ when editing (click → re-render). State is
+   * per-widget-instance, so a canvas refresh resets to rendered — but
+   * edits themselves persist via the shared cell model.
+   */
+  private _renderMarkdownToggleButton(host: HTMLElement): void {
+    const editing = this._markdownEditing;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'jp-CellLayout-mdToggle';
+    btn.title = editing ? 'Finish editing markdown' : 'Edit markdown source';
+    btn.setAttribute('aria-label', btn.title);
+    btn.textContent = editing ? '✓' : '✎';
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._markdownEditing = !this._markdownEditing;
+      void this._render();
+    });
+    btn.addEventListener('pointerdown', e => e.stopPropagation());
+    host.appendChild(btn);
+  }
+
+  /**
+   * Inject a small Run button (top-left of the cell, immediately right of
+   * the drag grip). Click triggers the supplied `_onRun` callback, which
+   * routes through LayoutCanvas → index.ts → CodeCell.execute on the
+   * underlying notebook cell. Outputs flow back through the existing
+   * SummaryOutputCell pipeline, so this method only handles the trigger.
+   */
+  private _renderRunButton(host: HTMLElement): void {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'jp-CellLayout-runButton';
+    btn.title = 'Run cell (Shift+Enter inside the editor also works)';
+    btn.setAttribute('aria-label', 'Run cell');
+    btn.textContent = '▶';
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._onRun?.();
+    });
+    btn.addEventListener('pointerdown', e => e.stopPropagation());
+    host.appendChild(btn);
+  }
+
+  /**
+   * Render the cell's source via JL's CodeMirror editor, bound directly to
+   * the cell's model. The editor is read-only in this stage; later stages
+   * will toggle editability and add a Run button.
+   *
+   * Two views (the notebook's own cell editor and this one) share the same
+   * model — JL's collaborative-aware sharedModel — so edits propagate
+   * automatically without a manual subscribe loop.
+   */
+  private _renderCodeEditor(body: HTMLElement): void {
+    if (!this._editorServices) {
+      return;
+    }
+    const wrapper = new CodeEditorWrapper({
+      factory: this._editorServices.factoryService.newInlineEditor,
+      model: this.cellModel,
+      editorOptions: {
+        config: {
+          readOnly: false,
+          lineNumbers: false
+        }
+      }
+    });
+    wrapper.addClass('jp-CellLayout-inputEditor');
+    body.appendChild(wrapper.node);
+    this._editor = wrapper;
   }
 
   private async _renderMarkdown(

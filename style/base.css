@@ -202,10 +202,105 @@
 .jp-CellLayout-inputBody,
 .jp-CellLayout-outputBody {
   position: absolute;
-  inset: 0;
+  inset: 0 0 0 6px;
   overflow: hidden;
   padding: 4px 6px;
   box-sizing: border-box;
+}
+
+/* Drag handle: thin vertical strip on the left edge of every summary cell.
+ * Gives the user an obvious grip when the cell body is otherwise claimed
+ * by an editable element (e.g. CodeMirror in code cells). Drag works from
+ * anywhere outside `.cm-editor` too — the handle is just discoverability. */
+.jp-CellLayout-dragHandle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: grab;
+  background-color: #e3edf7;
+  z-index: 30;
+  user-select: none;
+}
+
+.jp-CellLayout-dragHandle:hover {
+  background-color: #c9dcf0;
+}
+
+/* Small Run-cell button on each summary code cell. Sits in the top-left
+ * area, immediately right of the drag grip — same niche the Excel refresh
+ * button uses. Hidden until the user hovers the cell (or focuses the
+ * button), so it doesn't permanently obscure the first line of code. */
+.jp-CellLayout-runButton {
+  position: absolute;
+  top: 1px;
+  left: 8px;
+  z-index: 60;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  font-size: 9px;
+  line-height: 14px;
+  border: 1px solid var(--jp-border-color2, #ccc);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--jp-success-color1, #28a745);
+  border-radius: 2px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.jp-CellLayout-input:hover .jp-CellLayout-runButton,
+.jp-CellLayout-runButton:focus-visible {
+  opacity: 1;
+}
+
+.jp-CellLayout-runButton:hover {
+  background: var(--jp-success-color3, #d4edda);
+}
+
+/* Edit / render toggle on markdown summary cells. Same niche as the Run
+ * button; ✎ when rendered, ✓ when in source-edit mode. Hover-only so the
+ * rendered markdown stays clean. */
+.jp-CellLayout-mdToggle {
+  position: absolute;
+  top: 1px;
+  left: 8px;
+  z-index: 60;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  font-size: 10px;
+  line-height: 14px;
+  border: 1px solid var(--jp-border-color2, #ccc);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--jp-ui-font-color2, #555);
+  border-radius: 2px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.jp-CellLayout-input:hover .jp-CellLayout-mdToggle,
+.jp-CellLayout-mdToggle:focus-visible {
+  opacity: 1;
+}
+
+.jp-CellLayout-mdToggle:hover {
+  background: var(--jp-layout-color2, #f0f0f0);
+}
+
+.jp-CellLayout-input.jp-CellLayout-dragging .jp-CellLayout-dragHandle,
+.jp-CellLayout-output.jp-CellLayout-dragging .jp-CellLayout-dragHandle {
+  cursor: grabbing;
+}
+
+/* Hide the grip during PDF export so it doesn't clutter the printed page. */
+.jp-CellLayout-exporting .jp-CellLayout-dragHandle {
+  display: none !important;
 }
 
 .jp-CellLayout-inputCode {
@@ -222,6 +317,35 @@
   font-size: 10px;
   white-space: pre;
   color: var(--jp-content-font-color1, #000);
+}
+
+/* JL CodeMirror editor embedded in a summary code-cell input. The wrapper
+ * fills the body; the inner cm-editor inherits the smaller summary font
+ * size so embedded code looks consistent with the rest of the canvas. */
+.jp-CellLayout-inputEditor {
+  width: 100%;
+  height: 100%;
+}
+
+.jp-CellLayout-inputEditor .cm-editor {
+  height: 100%;
+  font-size: 10px;
+  background: transparent;
+}
+
+.jp-CellLayout-inputEditor .cm-scroller {
+  font-family: var(
+    --jp-code-font-family,
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Consolas,
+    monospace
+  );
+}
+
+.jp-CellLayout-inputEditor .cm-editor.cm-focused {
+  outline: none;
 }
 
 .jp-CellLayout-md {
@@ -353,7 +477,7 @@
 
 .jp-CellLayout-excelBody {
   position: absolute;
-  inset: 16px 4px 14px 4px;
+  inset: 16px 4px 14px 10px;
   overflow: auto;
   font-family: var(--jp-ui-font-family, system-ui, sans-serif);
   font-size: 10px;
@@ -409,7 +533,7 @@
 .jp-CellLayout-excelRefresh {
   position: absolute;
   top: 1px;
-  left: 2px;
+  left: 8px;
   z-index: 60;
   width: 16px;
   height: 16px;
