@@ -43,16 +43,34 @@ export function enableDrag(
     if (e.button !== 0) {
       return;
     }
+    const target = e.target as Element | null;
     // If the user pressed on a navigable anchor, let the browser handle the
     // click. Calling preventDefault on pointerdown suppresses the synthesized
     // click event for any descendant, which otherwise blocks link navigation.
-    const target = e.target as Element | null;
+    // Still record the interaction so the cell is tracked as "last clicked"
+    // for the mode-switch carryover feature.
     const anchor = target?.closest?.('a');
     if (anchor) {
       const href = anchor.getAttribute('href');
       if (href && /^(https?|mailto|ftp):/i.test(href)) {
+        options.onInteract?.();
         return;
       }
+    }
+    // If the user pressed inside an embedded CodeMirror editor, hand the
+    // click off to it for cursor placement / typing. Without this skip,
+    // every click on a code cell starts a drag and never reaches CM's
+    // selection handling. Still record the interaction.
+    if (target?.closest?.('.cm-editor')) {
+      options.onInteract?.();
+      return;
+    }
+    // Pointerdown on a resize handle must reach the resizable.ts listener
+    // (bubble phase). Our capture-phase handler runs first; if we claim the
+    // event with preventDefault/stopPropagation, resize never starts. Skip
+    // drag here — resize.ts will fire its own onInteract.
+    if (target?.closest?.('.jp-CellLayout-handle')) {
+      return;
     }
     options.onInteract?.();
     dragging = true;
@@ -141,14 +159,19 @@ export function enableDrag(
     onPositionChange(rounded);
   };
 
-  node.addEventListener('pointerdown', onPointerDown);
+  // Capture phase for pointerdown so the cell-level handler runs before any
+  // inner widget (e.g. CodeMirror) can stopPropagation. Without this, clicks
+  // inside an embedded editor never reach our `onInteract` callback and the
+  // mode-switch carryover (#38) silently breaks. The other phase listeners
+  // can stay on bubble — once dragging is active we use pointer capture.
+  node.addEventListener('pointerdown', onPointerDown, { capture: true });
   node.addEventListener('pointermove', onPointerMove);
   node.addEventListener('pointerup', endDrag);
   node.addEventListener('pointercancel', endDrag);
 
   return {
     dispose: () => {
-      node.removeEventListener('pointerdown', onPointerDown);
+      node.removeEventListener('pointerdown', onPointerDown, { capture: true });
       node.removeEventListener('pointermove', onPointerMove);
       node.removeEventListener('pointerup', endDrag);
       node.removeEventListener('pointercancel', endDrag);

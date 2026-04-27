@@ -202,10 +202,40 @@
 .jp-CellLayout-inputBody,
 .jp-CellLayout-outputBody {
   position: absolute;
-  inset: 0;
+  inset: 0 0 0 6px;
   overflow: hidden;
   padding: 4px 6px;
   box-sizing: border-box;
+}
+
+/* Drag handle: thin vertical strip on the left edge of every summary cell.
+ * Gives the user an obvious grip when the cell body is otherwise claimed
+ * by an editable element (e.g. CodeMirror in code cells). Drag works from
+ * anywhere outside `.cm-editor` too — the handle is just discoverability. */
+.jp-CellLayout-dragHandle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: grab;
+  background-color: #e3edf7;
+  z-index: 30;
+  user-select: none;
+}
+
+.jp-CellLayout-dragHandle:hover {
+  background-color: #c9dcf0;
+}
+
+.jp-CellLayout-input.jp-CellLayout-dragging .jp-CellLayout-dragHandle,
+.jp-CellLayout-output.jp-CellLayout-dragging .jp-CellLayout-dragHandle {
+  cursor: grabbing;
+}
+
+/* Hide the grip during PDF export so it doesn't clutter the printed page. */
+.jp-CellLayout-exporting .jp-CellLayout-dragHandle {
+  display: none !important;
 }
 
 .jp-CellLayout-inputCode {
@@ -382,7 +412,7 @@
 
 .jp-CellLayout-excelBody {
   position: absolute;
-  inset: 16px 4px 14px 4px;
+  inset: 16px 4px 14px 10px;
   overflow: auto;
   font-family: var(--jp-ui-font-family, system-ui, sans-serif);
   font-size: 10px;
@@ -438,7 +468,7 @@
 .jp-CellLayout-excelRefresh {
   position: absolute;
   top: 1px;
-  left: 2px;
+  left: 8px;
   z-index: 60;
   width: 16px;
   height: 16px;
