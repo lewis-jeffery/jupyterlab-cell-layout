@@ -4,10 +4,12 @@ import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import type { Widget } from '@lumino/widgets';
 
 import type { CellCoordinator } from '../managers/cell-coordinator';
+import type { ExcelBridge } from '../managers/excel-bridge';
 import { OutputProcessor } from '../managers/output-processor';
 import type { ICellLayout, OutputSlotId } from '../managers/metadata';
 
 import type { ISnapHandler } from './draggable';
+import { SummaryExcelCell } from './summary-excel-cell';
 import { SummaryInputCell } from './summary-input-cell';
 import { SummaryOutputCell } from './summary-output-cell';
 
@@ -21,19 +23,24 @@ export interface ISummaryCellOptions {
   displayIndex: number;
   coordinator?: CellCoordinator;
   rendermime?: IRenderMimeRegistry;
+  excelBridge?: ExcelBridge;
   onInteract?: () => void;
   snapHandlerFactory?: ISnapHandlerFactory;
 }
 
 /**
  * Logical wrapper around one notebook cell's summary-mode presentation.
- * Owns a SummaryInputCell and up to two SummaryOutputCell widgets.
+ *
+ * Most cells own a SummaryInputCell + 0..2 SummaryOutputCell widgets. Cells
+ * with `layout.excel` set are rendered as a single SummaryExcelCell that
+ * mirrors a named range from an Excel workbook (read-only in Phase 1).
+ *
  * Not itself a Lumino Widget — it returns the widgets to attach to the canvas.
  */
 export class SummaryCellWidget {
   readonly cellId: string;
-  readonly input: SummaryInputCell;
   readonly outputs: SummaryOutputCell[];
+  private _main: SummaryInputCell | SummaryExcelCell;
   private _zIndex: number;
 
   constructor(
@@ -47,6 +54,7 @@ export class SummaryCellWidget {
     const {
       coordinator,
       rendermime,
+      excelBridge,
       onInteract,
       displayIndex,
       snapHandlerFactory
@@ -56,6 +64,38 @@ export class SummaryCellWidget {
     const getGridSnapMm = coordinator
       ? () => coordinator.gridSnapMm()
       : undefined;
+
+    if (layout.excel) {
+      const excelCallbacks = coordinator
+        ? {
+            onPositionChange: (pos: { x: number; y: number }) =>
+              coordinator.updateInputPosition(id, pos),
+            onGeometryChange: (
+              pos: { x: number; y: number },
+              size: { width: number; height: number }
+            ) =>
+              coordinator.updateInputLayout(id, {
+                position: pos,
+                size,
+                auto_fit: false
+              }),
+            getGridSnapMm,
+            onInteract,
+            snapHandler: snapHandlerFactory?.(id, 'input') ?? undefined
+          }
+        : undefined;
+      this._main = new SummaryExcelCell(layout.input, {
+        displayLabel: indexLabel,
+        link: layout.excel,
+        bridge: excelBridge,
+        callbacks: excelCallbacks
+      });
+      this._main.node.dataset.cellId = id;
+      this._main.node.dataset.slot = 'input';
+      this.outputs = [];
+      return;
+    }
+
     const inputCallbacks = coordinator
       ? {
           onPositionChange: (pos: { x: number; y: number }) =>
@@ -76,13 +116,13 @@ export class SummaryCellWidget {
           snapHandler: snapHandlerFactory?.(id, 'input') ?? undefined
         }
       : undefined;
-    this.input = new SummaryInputCell(cellModel, layout.input, {
+    this._main = new SummaryInputCell(cellModel, layout.input, {
       displayLabel: indexLabel,
       rendermime,
       callbacks: inputCallbacks
     });
-    this.input.node.dataset.cellId = id;
-    this.input.node.dataset.slot = 'input';
+    this._main.node.dataset.cellId = id;
+    this._main.node.dataset.slot = 'input';
     this.outputs = [];
 
     const routed = routeCellOutputs(cellModel);
@@ -139,18 +179,30 @@ export class SummaryCellWidget {
 
   setZIndex(z: number): void {
     this._zIndex = z;
-    this.input.setZIndex(z);
+    this._main.setZIndex(z);
     for (const o of this.outputs) {
       o.setZIndex(z);
     }
   }
 
   widgets(): Widget[] {
-    return [this.input, ...this.outputs];
+    return [this._main, ...this.outputs];
+  }
+
+  /**
+   * Resolved once this cell's content is ready to be captured. For Excel
+   * cells this awaits the in-flight fetch; for everything else it resolves
+   * immediately.
+   */
+  awaitReady(): Promise<void> {
+    if (this._main instanceof SummaryExcelCell) {
+      return this._main.awaitReady();
+    }
+    return Promise.resolve();
   }
 
   dispose(): void {
-    this.input.dispose();
+    this._main.dispose();
     for (const w of this.outputs) {
       w.dispose();
     }

@@ -54,11 +54,18 @@ export interface IOutputLayout {
   auto_fit: boolean;
 }
 
+export interface IExcelLink {
+  workbook: string;
+  sheet: string;
+  range: string;
+}
+
 export interface ICellLayout {
   type: CellType;
   mode: CellMode;
   input: IInputLayout;
   outputs: IOutputLayout[];
+  excel?: IExcelLink;
 }
 
 export interface ILayoutSettings {
@@ -236,6 +243,19 @@ function normalizeOutputs(raw: unknown): IOutputLayout[] {
     );
 }
 
+function normalizeExcel(raw: unknown): IExcelLink | undefined {
+  if (!isObject(raw)) {
+    return undefined;
+  }
+  const workbook = typeof raw.workbook === 'string' ? raw.workbook.trim() : '';
+  const sheet = typeof raw.sheet === 'string' ? raw.sheet.trim() : '';
+  const range = typeof raw.range === 'string' ? raw.range.trim() : '';
+  if (!workbook || !sheet || !range) {
+    return undefined;
+  }
+  return { workbook, sheet, range };
+}
+
 export function normalizeCell(raw: unknown): ICellLayout | null {
   if (!isObject(raw)) {
     return null;
@@ -243,12 +263,17 @@ export function normalizeCell(raw: unknown): ICellLayout | null {
   const type: CellType =
     raw.type === 'markdown' || raw.type === 'raw' ? raw.type : 'code';
   const mode: CellMode = raw.mode === 'summary' ? 'summary' : 'edit';
-  return {
+  const excel = normalizeExcel(raw.excel);
+  const cell: ICellLayout = {
     type,
     mode,
     input: normalizeInput(raw.input),
     outputs: normalizeOutputs(raw.outputs)
   };
+  if (excel) {
+    cell.excel = excel;
+  }
+  return cell;
 }
 
 function normalizeCells(raw: unknown): Record<string, ICellLayout> {

@@ -1,6 +1,6 @@
 # JupyterLab Cell Layout — Task List
 
-_Last updated: 2026-04-26 (UX polish from real use)_
+_Last updated: 2026-04-27 (UX polish merged; Excel Phase 1 resumed)_
 
 Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · ⏸ deferred
 
@@ -27,13 +27,23 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 
 **Smart alignment guides:** #30 — during drag and resize, snap to nearby cell edges and centres, plus active-page edges and centres. 2 mm tolerance. Same-page only. Smart-guide snap takes precedence over the grid; falls back to grid when no smart match. User-configurable via the `smartGuides` setting (default on). Resize snaps the moving edge only; centre candidates are excluded for resize.
 
-## 🟢 In progress (UX polish from real use)
+**UX polish from real use (delivered to `main`):**
 
-- **#36** ✅ Eye / hide button on cells in edit mode + right-click context menu item, both toggling inclusion in summary view. Existing `Ctrl+Shift+E` and palette command stay.
-- **#37** ✅ More visible page break in summary mode — replaced the 1-px dashed line with a 12-px grey "gap" strip with subtle drop-shadows, sitting above cells so any cell straddling the boundary is visibly cut in half. PDF export still hides the strip.
-- **#38** ✅ Cell selected in summary view becomes the active cell when switching to edit mode. The canvas tracks the most recently clicked cell (the one brought to front); on summary→edit, that cell is activated and scrolled into view. No prior click → jump to the top of the notebook.
-- **#39** ⬜ LaTeX in markdown cells does not render in summary view (e.g. `$a_i = \sqrt{(y_i-y_{i+1})^2 + (x_i-x_{i+1})^2}$`). Likely MathJax not being triggered after rendermime renders the markdown node.
-- **#40** ✅ Insert / delete pages in the middle of the summary view. Right-click any "Page N of M" badge in the bottom-right of a page → menu offers "Insert page above", "Insert page below", "Delete this page". Insert shifts cells with top y >= boundary down by one pageHeight; delete shifts cells below up by one pageHeight. Delete refuses if any summary-mode cell sits on the chosen page.
+- **#36** ✅ Eye / hide button on cells in edit mode + right-click context menu item, both toggling inclusion in summary view.
+- **#37** ✅ More visible page break in summary mode — 12-px grey "gap" strip with subtle drop-shadows, sitting above cells so any cell straddling the boundary is visibly cut in half. PDF export still hides the strip.
+- **#38** ✅ Cell selected in summary view becomes the active cell when switching to edit mode (scrolled into view). No prior click → jump to the top.
+- **#39** ✅ LaTeX in markdown cells now renders in summary view. Root cause: rendering into a detached node, so JL's MathJax typesetter had nothing to typeset. Fix attaches the renderer node before `renderModel`, plus an explicit `latexTypesetter.typeset()` safety pass.
+- **#40** ✅ Insert / delete pages in the middle of the summary view. Right-click any "Page N of M" badge → menu offers _Insert page above_, _Insert page below_, _Delete this page_. Render-aware overlap check prevents false "page is occupied" errors when only empty output-slot metadata sits on the page.
+
+## 🟢 In progress
+
+**Excel range view — Phase 1 (resumed 2026-04-27 on `feat/excel-phase-1`):** #31 — a layout cell can mirror an open Excel workbook's named range via xlwings. Read-only, manual refresh. Comm bridge between frontend and a kernel-side helper (`jupyterlab_cell_layout.excel_bridge.register()`). Layout metadata gains `cells[*].excel = { workbook, sheet, range }`. Command palette: "Mark active cell as Excel range view" prompts for the three values; "Clear Excel range link" reverts. **Open bug:** after running the Mark command, the debug info dialog does not show the `excel` field on the affected cell — metadata may not be persisting. Diagnosing now.
+
+⏳ **Excel — future phases:**
+- **#32** ⏸ Phase 2 (editable sub-ranges) — **deprioritised** under the one-way-display model: editing happens in Excel itself; summary is read-only for distribution.
+- **#33** ✅ Phase 3 (live sync via 1 s poll + diff push): persistent comm, kernel daemon polling thread, `subscribe` / `unsubscribe` / `read` message types, polling pauses while user code executes.
+- **#34** 🟡 Phase 4 (formatting passthrough): **alignment shipped on Mac**. Bold / italic / font colour / fill colour are out of scope on Mac because Excel for Mac's AppleScript bridge returns the `k.missing_value` sentinel for `font.bold` / `font.color` (even per-cell) and doesn't expose a working `interior` property at all. The `formats` payload structure is in place — the Windows code path (#35) can populate the omitted fields without a frontend change. A possible Mac fallback is to read the saved `.xlsx` via `openpyxl` and watch the file mtime for changes; not implemented (means user must save in Excel before formatting changes propagate). Number formats and merged cells also deferred.
+- **#35** ⬜ Phase 5: robustness (Excel-not-running affordance, debounced concurrent edits, **Windows COM `pythoncom.CoInitialize()` per polling thread — required before any PyPI publish**, and the `bold` / `italic` / `fg` / `bg` properties land here on Windows because COM exposes them properly).
 - **#41** ⬜ Multi-cell select + move (drag-marquee, shift-click; "select all above/below active cell" command). Phase 4 item.
 
 ## ⏸ Deferred

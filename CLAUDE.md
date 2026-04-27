@@ -22,6 +22,7 @@ Engineering design documentation where:
 | 2 | Drag, resize, z-index, A/B routing, grid snap | ✅ Delivered | A/B override UI deferred (see FR3 below). |
 | 3 | PDF export, polish, docs | ✅ Core delivered | Multi-page canvas + page-aware PDF export with searchable text overlay + clickable link annotations. Cover sheet + summary-mode ToC deferred. |
 | 4 | Templates, bulk ops, advanced keyboard | 🟡 Partial | Smart alignment guides shipped (was on the Phase 4 backlog). Templates, bulk ops, full keyboard nav not started. Spec's "grid snapping" item already shipped in Phase 2. |
+| Excel | xlwings-linked cells (read-only mirror of a named range) | 🟡 Phase 1 of 5 delivered | Comm bridge to `jupyterlab_cell_layout.excel_bridge`; manual refresh; one cell = one named range. Phases 2–5 (editable sub-ranges, live sync, formatting, robustness) not started. |
 
 **Deferred or known-limitation items (kept on the task list):**
 - **#26** PDF cover sheet (title page + optional ToC).
@@ -183,6 +184,7 @@ _Updated to reflect the actual schema as of v0.1.0:_
 | `outputs[].auto_fit` | Same, for matplotlib / image outputs in slot B. |
 | `settings.grid_snap` | In **millimetres** (default 5). The original spec implied pixels; reinterpreted as mm consistent with the rest of the geometry. |
 | `settings.smart_guides` | Boolean (default `true`). When on, drag and resize show alignment guides and snap to nearby cell edges/centres and active-page edges/centres within a 2 mm tolerance. Smart-guide snap takes precedence over the grid; falls back to grid when no smart match. |
+| `cells[*].excel` | Optional `{ workbook, sheet, range }` (all strings). When present, the cell is rendered on the canvas as a read-only mirror of the named range, fetched via the `jupyterlab_cell_layout.excel_bridge` Comm channel. The cell still occupies the slot defined by `cells[*].input` (position, size, z_index); `outputs` are ignored when `excel` is set. Set/cleared via the "Mark active cell as Excel range view" / "Clear Excel range link" command-palette entries. |
 
 All position and size values are in **mm** (converted to CSS px at 96 DPI for rendering, to pt for PDF).
 
@@ -397,8 +399,46 @@ Per-notebook state is held in a `WeakMap<NotebookPanel, INotebookState>` contain
 | `jupyterlab-cell-layout:remove-page` | `Ctrl+Shift+[` | Remove last page |
 | `jupyterlab-cell-layout:export-pdf` | _(palette only)_ | Export PDF |
 | `jupyterlab-cell-layout:show-info` | _(palette only)_ | Debug dialog with layout state |
+| `jupyterlab-cell-layout:mark-as-excel-view` | _(palette only)_ | Prompt for `{ workbook, sheet, range }` and link the active cell to that named range |
+| `jupyterlab-cell-layout:clear-excel-view` | _(palette only)_ | Remove the Excel link from the active cell |
 
 Toolbar adds four buttons at positions 10–13: **Edit/Summary mode**, **Portrait/Landscape**, **N pages**, **Export PDF**.
+
+## Excel range view (Phase 1, read-only)
+
+A layout cell can mirror an open Excel workbook's named range via xlwings.
+
+### Kernel-side setup
+
+Once per kernel, the user runs:
+
+```python
+from jupyterlab_cell_layout.excel_bridge import register
+register()
+```
+
+This registers a Comm target named `jupyterlab-cell-layout:excel`. xlwings is imported lazily inside the request handler — the module loads even when xlwings is missing, but a `read` request will then return a friendly error.
+
+### Frontend wiring
+
+- `src/managers/excel-bridge.ts` — opens a fresh Comm per `read` request, sends `{ type: "read", request_id, workbook, sheet, range }`, awaits one of `{ type: "data", rows }` or `{ type: "error", message }`, then closes the Comm. Per-notebook instance hung off `INotebookState.excelBridge`.
+- `src/widgets/summary-excel-cell.ts` — Lumino widget rendering the mirrored range as an HTML table with a refresh button (top-left) and a status line (bottom). Auto-fetches on first render; on failure, renders the error inline. Draggable / resizable / snappable like every other cell.
+- `src/widgets/summary-cell.ts` — when `layout.excel` is set, instantiates a `SummaryExcelCell` instead of the normal input + outputs. The cell still uses `layout.input.position` and `layout.input.size` for its placement on the canvas; `layout.outputs` are ignored.
+
+### Phase 1 limitations
+
+- **Read-only**: no inline editing, no write-back.
+- **Manual refresh**: no polling. Click the ⟳ button (or refresh-on-render) to re-fetch.
+- **No formatting passthrough**: numbers are right-aligned, everything else is plain text in a thin-bordered table. Excel formatting (colours, bold, number formats) is not reproduced.
+- **No Excel-not-running affordance**: if Excel isn't running or the workbook isn't open, the user sees an error message inline. They are expected to fix their environment and click refresh.
+- **No structural sync** — adding a row in Excel doesn't auto-grow the cell. Resize the cell manually or click refresh.
+
+### Phases 2–5 (not started)
+
+- Phase 2: editable sub-ranges (write back via `xw.Range(...).value = ...`).
+- Phase 3: live sync via 1 s kernel-side polling + diff push.
+- Phase 4: formatting passthrough.
+- Phase 5: robustness (Excel-not-running affordance, debounced concurrent edits).
 
 ## Quality Assurance
 

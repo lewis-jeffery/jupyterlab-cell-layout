@@ -6,6 +6,7 @@ import { ISignal, Signal } from '@lumino/signaling';
 import {
   type CellType,
   type ICellLayout,
+  type IExcelLink,
   type IInputLayout,
   type ILayoutSettings,
   type INotebookLayout,
@@ -561,6 +562,23 @@ export class CellCoordinator {
       }
     }
     return max;
+  }
+
+  /**
+   * Set or clear the Excel-link metadata for a cell. Pass `null` to remove.
+   */
+  setExcelLink(cellId: string, link: IExcelLink | null): void {
+    const entry = this.list().find(e => e.cellModel.id === cellId);
+    if (!entry) {
+      return;
+    }
+    const next: ICellLayout = { ...entry.layout };
+    if (link) {
+      next.excel = { ...link };
+    } else {
+      delete next.excel;
+    }
+    this.persistLayout(cellId, next);
   }
 
   /**

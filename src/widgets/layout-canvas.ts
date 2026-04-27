@@ -2,6 +2,7 @@ import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
 
 import { CellCoordinator, pageBoundsFor } from '../managers/cell-coordinator';
+import type { ExcelBridge } from '../managers/excel-bridge';
 import {
   type MetadataManager,
   type PageOrientation,
@@ -35,7 +36,8 @@ export class LayoutCanvas extends Widget {
   constructor(
     private readonly coordinator: CellCoordinator,
     private readonly manager: MetadataManager,
-    private readonly rendermime?: IRenderMimeRegistry
+    private readonly rendermime?: IRenderMimeRegistry,
+    private readonly excelBridge?: ExcelBridge
   ) {
     super();
     this.addClass('jp-CellLayout-root');
@@ -88,6 +90,7 @@ export class LayoutCanvas extends Widget {
         displayIndex: entry.index + 1,
         coordinator: this.coordinator,
         rendermime: this.rendermime,
+        excelBridge: this.excelBridge,
         onInteract: () => this.bringCellToFront(cellId),
         snapHandlerFactory: (id, slot) => this._snapHandlerFor(id, slot)
       });
@@ -198,6 +201,15 @@ export class LayoutCanvas extends Widget {
     const id = this._activeCellId;
     this._activeCellId = null;
     return id;
+  }
+
+  /**
+   * Resolves once every cell on the canvas has finished any in-flight
+   * content fetch. Used by the PDF exporter to ensure Excel-linked cells
+   * have their tables rendered before html2canvas snapshots the DOM.
+   */
+  async awaitReady(): Promise<void> {
+    await Promise.all(this._cells.map(c => c.awaitReady()));
   }
 
   bringCellToFront(cellId: string): void {
