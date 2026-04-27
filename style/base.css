@@ -114,6 +114,19 @@
   cursor: grabbing;
 }
 
+/* Hover-link: when the user hovers any slot, the canvas marks every slot
+ * sharing the same data-cell-id with this class. Helps locate a code
+ * cell's outputs (or vice versa) when they're spread across the canvas. */
+.jp-CellLayout-cellGroupHover {
+  outline: 2px dashed var(--jp-brand-color1, #2196f3);
+  outline-offset: 1px;
+}
+
+/* Suppress the hover-link outline during PDF export so it doesn't print. */
+.jp-CellLayout-exporting .jp-CellLayout-cellGroupHover {
+  outline: none;
+}
+
 .jp-CellLayout-handle {
   position: absolute;
   width: 8px;

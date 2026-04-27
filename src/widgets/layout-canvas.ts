@@ -38,6 +38,12 @@ export class LayoutCanvas extends Widget {
   // every refresh, drained in `_clearCells` (and via clearAll on dispose).
   private _outputDisconnects: Array<() => void> = [];
   private _pendingOutputRefresh: ReturnType<typeof setTimeout> | null = null;
+  // Cells the canvas has rendered at least once. Any cellId that's missing
+  // from this set when refresh runs is "newly added" and gets lifted to
+  // the top of the z-order so it's visible if it lands at a default
+  // position that overlaps an existing cell.
+  private _knownCellIds = new Set<string>();
+  private _hoverLinkDispose: (() => void) | null = null;
 
   constructor(
     private readonly coordinator: CellCoordinator,
@@ -64,6 +70,76 @@ export class LayoutCanvas extends Widget {
 
     coordinator.changed.connect(this._onCellsChanged, this);
     coordinator.settingsChanged.connect(this._onSettingsChanged, this);
+
+    // Prime the known-cells set so existing cells aren't all flagged as
+    // "new" on the first refresh (which would lift every cell to the
+    // top, scrambling the user's z-order).
+    for (const entry of this.coordinator.list()) {
+      if (entry.layout.mode === 'summary') {
+        this._knownCellIds.add(entry.cellModel.id);
+      }
+    }
+    this._wireHoverLinking();
+  }
+
+  /**
+   * Delegated listeners on the page so hovering any cell slot temporarily
+   * outlines all slots that share its cellId — making it easy to find a
+   * code cell's outputs (or vice versa) when they're spread across the
+   * canvas. Outline class is added in mouseover and removed in mouseout
+   * (skipping leave events that move into a sibling slot of the same
+   * group, so the highlight is stable while you traverse the group).
+   */
+  private _wireHoverLinking(): void {
+    const SLOT = '.jp-CellLayout-input, .jp-CellLayout-output';
+    const HIGHLIGHT = 'jp-CellLayout-cellGroupHover';
+    const slotOf = (el: EventTarget | null): HTMLElement | null => {
+      const t = el as HTMLElement | null;
+      return t?.closest?.(SLOT) as HTMLElement | null;
+    };
+    const setHighlight = (cellId: string, on: boolean): void => {
+      const matching = this._page.querySelectorAll(
+        `[data-cell-id="${cellId}"]`
+      );
+      matching.forEach(el => el.classList.toggle(HIGHLIGHT, on));
+    };
+    const onOver = (e: Event): void => {
+      const slot = slotOf(e.target);
+      if (!slot) {
+        return;
+      }
+      const cellId = slot.dataset.cellId;
+      if (cellId) {
+        setHighlight(cellId, true);
+      }
+    };
+    const onOut = (e: Event): void => {
+      const slot = slotOf(e.target);
+      if (!slot) {
+        return;
+      }
+      const cellId = slot.dataset.cellId;
+      if (!cellId) {
+        return;
+      }
+      // Don't drop the highlight if the cursor is moving into a sibling
+      // slot of the same cell group — keep the outline stable until the
+      // mouse actually leaves the group.
+      const related = (e as MouseEvent).relatedTarget as Element | null;
+      const intoSameGroup = related?.closest?.(
+        `[data-cell-id="${cellId}"]`
+      );
+      if (intoSameGroup) {
+        return;
+      }
+      setHighlight(cellId, false);
+    };
+    this._page.addEventListener('mouseover', onOver);
+    this._page.addEventListener('mouseout', onOut);
+    this._hoverLinkDispose = () => {
+      this._page.removeEventListener('mouseover', onOver);
+      this._page.removeEventListener('mouseout', onOut);
+    };
   }
 
   private _onSettingsChanged(): void {
@@ -80,6 +156,8 @@ export class LayoutCanvas extends Widget {
     }
     this.coordinator.changed.disconnect(this._onCellsChanged, this);
     this.coordinator.settingsChanged.disconnect(this._onSettingsChanged, this);
+    this._hoverLinkDispose?.();
+    this._hoverLinkDispose = null;
     this._clearCells();
     super.dispose();
   }
@@ -89,11 +167,16 @@ export class LayoutCanvas extends Widget {
     const layout = this.manager.read();
     this._clearCells();
     this._applyPageBounds(layout.settings);
+    const newlyAdded: string[] = [];
     for (const entry of this.coordinator.list()) {
       if (entry.layout.mode !== 'summary') {
         continue;
       }
       const cellId = entry.cellModel.id;
+      if (!this._knownCellIds.has(cellId)) {
+        newlyAdded.push(cellId);
+        this._knownCellIds.add(cellId);
+      }
       const widget = new SummaryCellWidget(entry.cellModel, entry.layout, {
         displayIndex: entry.index + 1,
         coordinator: this.coordinator,
@@ -123,6 +206,13 @@ export class LayoutCanvas extends Widget {
           outputs.changed.disconnect(handler)
         );
       }
+    }
+    // Lift any newly-added cell to the top of the z-order so it's visible
+    // even if its default-layout position lands under an existing cell.
+    // Done after all widgets are in the DOM so the bringCellToFront()
+    // logic (which reads sibling z-indexes) sees the final state.
+    for (const cellId of newlyAdded) {
+      this.bringCellToFront(cellId);
     }
   }
 
