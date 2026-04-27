@@ -1,4 +1,4 @@
-import type { ICellModel } from '@jupyterlab/cells';
+import type { ICellModel, ICodeCellModel } from '@jupyterlab/cells';
 import {
   CodeEditorWrapper,
   type IEditorServices
@@ -91,6 +91,8 @@ export class SummaryInputCell extends Widget {
   private _editorKeydownDispose?: () => void;
   private _onRun?: () => void;
   private _callbacks?: IInputLayoutCallbacks;
+  private _runButton?: HTMLButtonElement;
+  private _stateChangedDispose?: () => void;
   // Markdown cells start in rendered mode and flip to source-editor mode
   // via the in-cell ✎ button. Transient (per-widget-instance) state — a
   // canvas refresh resets to rendered, which is acceptable since edits
@@ -161,6 +163,8 @@ export class SummaryInputCell extends Widget {
     this._resizeCtl?.dispose();
     this._editorKeydownDispose?.();
     this._editorKeydownDispose = undefined;
+    this._stateChangedDispose?.();
+    this._stateChangedDispose = undefined;
     this._editor?.dispose();
     this._editor = undefined;
     super.dispose();
@@ -192,6 +196,10 @@ export class SummaryInputCell extends Widget {
       this._editor.dispose();
       this._editor = undefined;
     }
+    // The Run button is recreated on every render; clear the ref so the
+    // stateChanged handler doesn't mutate a detached DOM node between
+    // _render calls.
+    this._runButton = undefined;
     const n = this.node;
     n.replaceChildren();
 
@@ -280,6 +288,37 @@ export class SummaryInputCell extends Widget {
     });
     btn.addEventListener('pointerdown', e => e.stopPropagation());
     host.appendChild(btn);
+    this._runButton = btn;
+    // Subscribe once per widget instance: when the cell's executionState
+    // changes (idle ↔ busy), reflect it on the Run button — visible while
+    // busy regardless of hover, disabled to suppress double-runs, and
+    // animated so the user knows something's happening.
+    if (!this._stateChangedDispose && this.cellModel.type === 'code') {
+      const codeModel = this.cellModel as ICodeCellModel;
+      const handler = (): void => this._updateRunButtonBusyState();
+      codeModel.stateChanged.connect(handler);
+      this._stateChangedDispose = (): void => {
+        codeModel.stateChanged.disconnect(handler);
+      };
+    }
+    this._updateRunButtonBusyState();
+  }
+
+  private _updateRunButtonBusyState(): void {
+    if (!this._runButton || this.cellModel.type !== 'code') {
+      return;
+    }
+    const codeModel = this.cellModel as ICodeCellModel;
+    const busy = codeModel.executionState === 'running';
+    this._runButton.classList.toggle(
+      'jp-CellLayout-runButton--busy',
+      busy
+    );
+    this._runButton.disabled = busy;
+    this._runButton.textContent = busy ? '◐' : '▶';
+    this._runButton.title = busy
+      ? 'Cell is running…'
+      : 'Run cell (Shift+Enter inside the editor also works)';
   }
 
   /**

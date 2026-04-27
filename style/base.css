@@ -253,12 +253,31 @@
 }
 
 .jp-CellLayout-input:hover .jp-CellLayout-runButton,
-.jp-CellLayout-runButton:focus-visible {
+.jp-CellLayout-runButton:focus-visible,
+.jp-CellLayout-runButton--busy {
   opacity: 1;
 }
 
 .jp-CellLayout-runButton:hover {
   background: var(--jp-success-color3, #d4edda);
+}
+
+.jp-CellLayout-runButton:disabled {
+  cursor: wait;
+}
+
+.jp-CellLayout-runButton--busy {
+  color: var(--jp-warn-color1, #ff8c00);
+  animation: jp-CellLayout-runPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes jp-CellLayout-runPulse {
+  0%, 100% {
+    background: rgba(255, 255, 255, 0.92);
+  }
+  50% {
+    background: var(--jp-warn-color3, #fff3e0);
+  }
 }
 
 /* Edit / render toggle on markdown summary cells. Same niche as the Run
