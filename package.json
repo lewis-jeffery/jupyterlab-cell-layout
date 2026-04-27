@@ -1,6 +1,6 @@
 {
     "name": "jupyterlab-cell-layout",
-    "version": "0.4.0",
+    "version": "0.5.0",
     "description": "Drag-and-drop cell layout for engineering design documentation with PDF export",
     "keywords": [
         "jupyter",

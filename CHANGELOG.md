@@ -2,6 +2,16 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## 0.5.0 — 2026-04-27
+
+Editable summary mode. Summary view is no longer read-only — code cells can be edited and re-run in place, markdown cells flip between rendered and source-edit. Replaces the Excel-as-data-source pattern as the primary workflow.
+
+- **Code cells** in summary mode now render via JL's CodeMirror editor (bound directly to the shared cell model), with full syntax highlighting. Click into a cell, change a value, the edit flows straight through to the original notebook cell.
+- **Run button** (small green ▶, top-left of each code cell, hover-only) runs the cell via `CodeCell.execute` — same pathway as Shift+Enter in edit mode. Output area on the canvas refreshes within ~100 ms thanks to a debounced `outputs.changed` subscription on the canvas.
+- **Markdown cells** keep their rendered MathJax-aware default; a small ✎ button (top-left, hover-only) flips into source-edit mode, ✓ flips back. Edits propagate via the shared model.
+- **Drag grip**: a 6-px light-blue strip on the left edge of every summary cell (input, output, Excel) is the new explicit drag affordance, since the cell body is now claimed by the editor for typing. Drag still works from any non-editor area too.
+- **Drag handler**: pointerdown switched to capture phase so clicks inside an embedded editor / button still register as cell interactions (so the mode-switch carryover from #38 keeps working). Bypasses for `.cm-editor`, `.jp-CellLayout-handle`, and any descendant `<button>` keep editing / resizing / Run / Excel-refresh clicks reaching their proper handlers.
+
 ## 0.4.0 — 2026-04-27
 
 Excel range view (read-only mirror with live sync). Mac-only for now; Windows COM is required before any PyPI publish (tracked as #35).
