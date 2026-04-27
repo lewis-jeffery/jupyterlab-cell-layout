@@ -6,13 +6,17 @@ const TARGET = 'jupyterlab-cell-layout:excel';
 
 export type CellValue = string | number | boolean | null;
 
+/** Per-cell horizontal alignment as seen in Excel. `null` = unknown. */
+export type Alignment = 'left' | 'center' | 'right' | 'general' | null;
+
 export interface IExcelReadResult {
   rows: ReadonlyArray<ReadonlyArray<CellValue>>;
+  alignments: ReadonlyArray<ReadonlyArray<Alignment>>;
 }
 
 export interface ISubscriptionHandler {
   /** Called whenever the kernel pushes new data for this subscription. */
-  onData: (rows: CellValue[][]) => void;
+  onData: (rows: CellValue[][], alignments: Alignment[][]) => void;
   /** Called when the kernel reports an error for this subscription. */
   onError: (message: string) => void;
 }
@@ -178,6 +182,7 @@ export class ExcelBridge {
       request_id?: string;
       subscription_key?: string;
       rows?: unknown;
+      alignments?: unknown;
       message?: string;
     };
     // Read replies are correlated by request_id.
@@ -188,7 +193,11 @@ export class ExcelBridge {
       }
       this._readWaiters.delete(data.request_id);
       if (data.type === 'data') {
-        waiter.resolve({ rows: coerceRows(data.rows) });
+        const rows = coerceRows(data.rows);
+        waiter.resolve({
+          rows,
+          alignments: coerceAlignments(data.alignments, rows)
+        });
       } else {
         waiter.reject(
           new Error(data.message ?? 'Unknown error from kernel')
@@ -203,7 +212,8 @@ export class ExcelBridge {
         return;
       }
       if (data.type === 'data') {
-        handler.onData(coerceRows(data.rows));
+        const rows = coerceRows(data.rows);
+        handler.onData(rows, coerceAlignments(data.alignments, rows));
       } else if (data.type === 'error') {
         handler.onError(data.message ?? 'Unknown error from kernel');
       }
@@ -243,4 +253,43 @@ function coerceValue(v: unknown): CellValue {
     return v;
   }
   return String(v);
+}
+
+/**
+ * Coerce the `alignments` field from a comm payload into a 2-D array
+ * shape-matched to `rows`. Older kernels (or read failures) may omit
+ * alignments — in that case every cell is `null` (means "render with
+ * default alignment").
+ */
+function coerceAlignments(
+  raw: unknown,
+  rows: CellValue[][]
+): Alignment[][] {
+  const out: Alignment[][] = [];
+  const fallbackRow = (width: number): Alignment[] =>
+    Array.from({ length: width }, () => null);
+  if (!Array.isArray(raw)) {
+    return rows.map(r => fallbackRow(r.length));
+  }
+  for (let i = 0; i < rows.length; i++) {
+    const width = rows[i].length;
+    const rawRow = raw[i];
+    if (!Array.isArray(rawRow)) {
+      out.push(fallbackRow(width));
+      continue;
+    }
+    const row: Alignment[] = [];
+    for (let j = 0; j < width; j++) {
+      row.push(coerceAlignment(rawRow[j]));
+    }
+    out.push(row);
+  }
+  return out;
+}
+
+function coerceAlignment(v: unknown): Alignment {
+  if (v === 'left' || v === 'center' || v === 'right' || v === 'general') {
+    return v;
+  }
+  return null;
 }

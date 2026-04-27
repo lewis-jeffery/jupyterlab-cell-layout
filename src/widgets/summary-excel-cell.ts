@@ -1,6 +1,7 @@
 import { Widget } from '@lumino/widgets';
 
 import type {
+  Alignment,
   CellValue,
   ExcelBridge,
   ISubscription
@@ -143,11 +144,11 @@ export class SummaryExcelCell extends Widget {
       this._initialPushReceived = true;
     };
     this._subscription = this._bridge.subscribe(this._link, {
-      onData: rows => {
+      onData: (rows, alignments) => {
         if (this._excelDisposed) {
           return;
         }
-        this._renderTable(rows);
+        this._renderTable(rows, alignments);
         const stamp = new Date().toLocaleTimeString();
         this._showStatus(`${this._link.sheet}!${this._link.range} · ${stamp}`);
         settle();
@@ -157,7 +158,7 @@ export class SummaryExcelCell extends Widget {
           return;
         }
         if (!this._initialPushReceived) {
-          this._renderTable([]);
+          this._renderTable([], []);
         }
         this._showStatus(`Error: ${msg}`, true);
         settle();
@@ -240,14 +241,14 @@ export class SummaryExcelCell extends Widget {
       if (this._excelDisposed) {
         return;
       }
-      this._renderTable(result.rows);
+      this._renderTable(result.rows, result.alignments);
       const stamp = new Date().toLocaleTimeString();
       this._showStatus(`${this._link.sheet}!${this._link.range} · ${stamp}`);
     } catch (err) {
       if (this._excelDisposed) {
         return;
       }
-      this._renderTable([]);
+      this._renderTable([], []);
       this._showStatus(
         `Error: ${(err as Error).message ?? String(err)}`,
         true
@@ -259,7 +260,8 @@ export class SummaryExcelCell extends Widget {
   }
 
   private _renderTable(
-    rows: ReadonlyArray<ReadonlyArray<CellValue>>
+    rows: ReadonlyArray<ReadonlyArray<CellValue>>,
+    alignments: ReadonlyArray<ReadonlyArray<Alignment>>
   ): void {
     const body = this._bodyEl;
     if (!body) {
@@ -275,14 +277,15 @@ export class SummaryExcelCell extends Widget {
     }
     const table = document.createElement('table');
     table.className = 'jp-CellLayout-excelTable';
-    for (const row of rows) {
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      const alignRow = alignments[r] ?? [];
       const tr = document.createElement('tr');
-      for (const cell of row) {
+      for (let c = 0; c < row.length; c++) {
+        const cell = row[c];
         const td = document.createElement('td');
         td.textContent = formatCell(cell);
-        if (typeof cell === 'number') {
-          td.classList.add('jp-CellLayout-excelNum');
-        }
+        applyCellAlignment(td, cell, alignRow[c] ?? null);
         tr.appendChild(td);
       }
       table.appendChild(tr);
@@ -311,4 +314,24 @@ function formatCell(v: CellValue): string {
     return String(Math.round(v * 1e6) / 1e6);
   }
   return String(v);
+}
+
+/**
+ * Apply Excel's horizontal alignment to a `<td>`. Explicit alignment from
+ * Excel ('left' / 'center' / 'right') wins. For 'general' or unknown, fall
+ * back to the cell-type default — numbers right, everything else left —
+ * which matches Excel's "general" rendering.
+ */
+function applyCellAlignment(
+  td: HTMLTableCellElement,
+  value: CellValue,
+  align: Alignment
+): void {
+  if (align === 'left' || align === 'center' || align === 'right') {
+    td.style.textAlign = align;
+    return;
+  }
+  if (typeof value === 'number') {
+    td.classList.add('jp-CellLayout-excelNum');
+  }
 }
