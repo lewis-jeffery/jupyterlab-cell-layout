@@ -88,6 +88,7 @@ export class SummaryInputCell extends Widget {
   private _rendermime?: IRenderMimeRegistry;
   private _editorServices?: IEditorServices;
   private _editor?: CodeEditorWrapper;
+  private _editorKeydownDispose?: () => void;
   private _onRun?: () => void;
   private _callbacks?: IInputLayoutCallbacks;
   // Markdown cells start in rendered mode and flip to source-editor mode
@@ -158,6 +159,8 @@ export class SummaryInputCell extends Widget {
   dispose(): void {
     this._dragCtl?.dispose();
     this._resizeCtl?.dispose();
+    this._editorKeydownDispose?.();
+    this._editorKeydownDispose = undefined;
     this._editor?.dispose();
     this._editor = undefined;
     super.dispose();
@@ -183,6 +186,8 @@ export class SummaryInputCell extends Widget {
     // Tear down any prior editor before clearing the DOM. CodeMirror needs
     // its widget lifecycle observed cleanly; just reaping the DOM nodes
     // would leak the editor's internal state.
+    this._editorKeydownDispose?.();
+    this._editorKeydownDispose = undefined;
     if (this._editor) {
       this._editor.dispose();
       this._editor = undefined;
@@ -302,6 +307,28 @@ export class SummaryInputCell extends Widget {
     });
     wrapper.addClass('jp-CellLayout-inputEditor');
     body.appendChild(wrapper.node);
+    // Shift+Enter / Cmd+Enter / Ctrl+Enter inside the editor runs the cell,
+    // matching JL's main-editor expectation. Capture phase so we intercept
+    // before CodeMirror's own keymap inserts a newline.
+    if (this._onRun && this.cellModel.type === 'code') {
+      const onKeyDown = (e: KeyboardEvent): void => {
+        if (e.key !== 'Enter') {
+          return;
+        }
+        if (!(e.shiftKey || e.metaKey || e.ctrlKey)) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        this._onRun?.();
+      };
+      wrapper.node.addEventListener('keydown', onKeyDown, { capture: true });
+      this._editorKeydownDispose = (): void => {
+        wrapper.node.removeEventListener('keydown', onKeyDown, {
+          capture: true
+        });
+      };
+    }
     this._editor = wrapper;
   }
 
