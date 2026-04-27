@@ -1,3 +1,4 @@
+import type { ICodeCellModel } from '@jupyterlab/cells';
 import type { IEditorServices } from '@jupyterlab/codeeditor';
 import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import { Widget } from '@lumino/widgets';
@@ -33,13 +34,18 @@ export class LayoutCanvas extends Widget {
   private _currentPageSize: PageSize = 'A4';
   private _currentOrientation: PageOrientation = 'portrait';
   private _activeCellId: string | null = null;
+  // Cleanup hooks for per-cell `outputs.changed` subscriptions; refilled
+  // every refresh, drained in `_clearCells` (and via clearAll on dispose).
+  private _outputDisconnects: Array<() => void> = [];
+  private _pendingOutputRefresh: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private readonly coordinator: CellCoordinator,
     private readonly manager: MetadataManager,
     private readonly rendermime?: IRenderMimeRegistry,
     private readonly excelBridge?: ExcelBridge,
-    private readonly editorServices?: IEditorServices
+    private readonly editorServices?: IEditorServices,
+    private readonly runCellById?: (cellId: string) => void
   ) {
     super();
     this.addClass('jp-CellLayout-root');
@@ -94,6 +100,7 @@ export class LayoutCanvas extends Widget {
         rendermime: this.rendermime,
         excelBridge: this.excelBridge,
         editorServices: this.editorServices,
+        onRunCell: this.runCellById,
         onInteract: () => this.bringCellToFront(cellId),
         snapHandlerFactory: (id, slot) => this._snapHandlerFor(id, slot)
       });
@@ -102,7 +109,39 @@ export class LayoutCanvas extends Widget {
       for (const w of widget.widgets()) {
         this._page.appendChild(w.node);
       }
+      // Stage C reactivity: when a code cell's outputs change (typically
+      // from execution), schedule a debounced canvas refresh so the
+      // SummaryOutputCell mirrors the new content. Without this, hitting
+      // the in-canvas Run button updates the notebook's cell but the
+      // summary view stays stale until mode-toggle.
+      if (entry.cellModel.type === 'code') {
+        const codeModel = entry.cellModel as ICodeCellModel;
+        const outputs = codeModel.outputs;
+        const handler = (): void => this._scheduleOutputRefresh();
+        outputs.changed.connect(handler);
+        this._outputDisconnects.push(() =>
+          outputs.changed.disconnect(handler)
+        );
+      }
     }
+  }
+
+  private _scheduleOutputRefresh(): void {
+    if (!this.isVisible) {
+      return;
+    }
+    // Debounce: streaming output emits many `changed` events per second;
+    // collapsing them into one refresh per ~100 ms keeps the UI fluid.
+    if (this._pendingOutputRefresh !== null) {
+      clearTimeout(this._pendingOutputRefresh);
+    }
+    this._pendingOutputRefresh = setTimeout(() => {
+      this._pendingOutputRefresh = null;
+      if (!this.isVisible) {
+        return;
+      }
+      this.refresh();
+    }, 100);
   }
 
   private _snapHandlerFor(cellId: string, slot: SlotKey): ISnapHandler | null {
@@ -297,6 +336,18 @@ export class LayoutCanvas extends Widget {
   }
 
   private _clearCells(): void {
+    for (const disconnect of this._outputDisconnects) {
+      try {
+        disconnect();
+      } catch {
+        /* signal already gone — ignore */
+      }
+    }
+    this._outputDisconnects = [];
+    if (this._pendingOutputRefresh !== null) {
+      clearTimeout(this._pendingOutputRefresh);
+      this._pendingOutputRefresh = null;
+    }
     for (const cell of this._cells) {
       cell.dispose();
     }

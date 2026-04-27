@@ -72,6 +72,14 @@ export function enableDrag(
     if (target?.closest?.('.jp-CellLayout-handle')) {
       return;
     }
+    // Pointerdown on any button descendant (Excel refresh, code-cell Run,
+    // future cell-toolbar items…) must reach the button's own click flow.
+    // Stage B's capture-phase listener would otherwise claim the event with
+    // stopPropagation and the click is never synthesised.
+    if (target?.closest?.('button')) {
+      options.onInteract?.();
+      return;
+    }
     options.onInteract?.();
     dragging = true;
     activePointerId = e.pointerId;

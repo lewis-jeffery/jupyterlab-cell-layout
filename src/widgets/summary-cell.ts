@@ -26,6 +26,7 @@ export interface ISummaryCellOptions {
   rendermime?: IRenderMimeRegistry;
   excelBridge?: ExcelBridge;
   editorServices?: IEditorServices;
+  onRunCell?: (cellId: string) => void;
   onInteract?: () => void;
   snapHandlerFactory?: ISnapHandlerFactory;
 }
@@ -118,10 +119,12 @@ export class SummaryCellWidget {
           snapHandler: snapHandlerFactory?.(id, 'input') ?? undefined
         }
       : undefined;
+    const onRunCell = options.onRunCell;
     this._main = new SummaryInputCell(cellModel, layout.input, {
       displayLabel: indexLabel,
       rendermime,
       editorServices: options.editorServices,
+      onRun: onRunCell ? () => onRunCell(id) : undefined,
       callbacks: inputCallbacks
     });
     this._main.node.dataset.cellId = id;

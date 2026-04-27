@@ -228,6 +228,39 @@
   background-color: #c9dcf0;
 }
 
+/* Small Run-cell button on each summary code cell. Sits in the top-left
+ * area, immediately right of the drag grip — same niche the Excel refresh
+ * button uses. Hidden until the user hovers the cell (or focuses the
+ * button), so it doesn't permanently obscure the first line of code. */
+.jp-CellLayout-runButton {
+  position: absolute;
+  top: 1px;
+  left: 8px;
+  z-index: 60;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  font-size: 9px;
+  line-height: 14px;
+  border: 1px solid var(--jp-border-color2, #ccc);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--jp-success-color1, #28a745);
+  border-radius: 2px;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.jp-CellLayout-input:hover .jp-CellLayout-runButton,
+.jp-CellLayout-runButton:focus-visible {
+  opacity: 1;
+}
+
+.jp-CellLayout-runButton:hover {
+  background: var(--jp-success-color3, #d4edda);
+}
+
 .jp-CellLayout-input.jp-CellLayout-dragging .jp-CellLayout-dragHandle,
 .jp-CellLayout-output.jp-CellLayout-dragging .jp-CellLayout-dragHandle {
   cursor: grabbing;

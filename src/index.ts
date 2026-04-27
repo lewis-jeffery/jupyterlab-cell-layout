@@ -8,6 +8,7 @@ import {
   ToolbarButton,
   showDialog
 } from '@jupyterlab/apputils';
+import { CodeCell } from '@jupyterlab/cells';
 import { IEditorServices } from '@jupyterlab/codeeditor';
 import { INotebookTracker, NotebookPanel } from '@jupyterlab/notebook';
 import {
@@ -112,6 +113,23 @@ function applyMode(panel: NotebookPanel, summary: boolean): void {
     s.orientationButton,
     s.manager.read().settings.orientation
   );
+}
+
+/**
+ * Execute the notebook cell with the given id, the same way the user
+ * pressing Shift+Enter on it in edit mode would. Used by the Run button
+ * the editable-summary feature renders next to each code cell. Looks up
+ * the live JL Cell widget by model id, defers to `CodeCell.execute` so
+ * the kernel pathway, busy state, and output handling all match JL's
+ * built-in behaviour. No-op for non-code cells or unknown ids.
+ */
+function runCellById(panel: NotebookPanel, cellId: string): void {
+  const widget = panel.content.widgets.find(
+    w => w.model.id === cellId
+  );
+  if (widget instanceof CodeCell) {
+    void CodeCell.execute(widget, panel.sessionContext);
+  }
 }
 
 function activateCellAfterModeSwitch(
@@ -600,7 +618,8 @@ function attachNotebook(panel: NotebookPanel): void {
         manager,
         panel.content.rendermime,
         excelBridge,
-        editorServicesRef ?? undefined
+        editorServicesRef ?? undefined,
+        cellId => runCellById(panel, cellId)
       );
 
     const layout = panel.layout as BoxLayout;

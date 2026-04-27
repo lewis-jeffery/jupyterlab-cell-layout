@@ -52,6 +52,7 @@ export interface IInputCellOptions {
   displayLabel: string;
   rendermime?: IRenderMimeRegistry;
   editorServices?: IEditorServices;
+  onRun?: () => void;
   callbacks?: IInputLayoutCallbacks;
 }
 
@@ -87,6 +88,7 @@ export class SummaryInputCell extends Widget {
   private _rendermime?: IRenderMimeRegistry;
   private _editorServices?: IEditorServices;
   private _editor?: CodeEditorWrapper;
+  private _onRun?: () => void;
   private _callbacks?: IInputLayoutCallbacks;
 
   constructor(
@@ -99,6 +101,7 @@ export class SummaryInputCell extends Widget {
     this._displayLabel = options.displayLabel;
     this._rendermime = options.rendermime;
     this._editorServices = options.editorServices;
+    this._onRun = options.onRun;
     this._callbacks = options.callbacks;
     this.addClass('jp-CellLayout-input');
     this.addClass(`jp-CellLayout-input-${cellModel.type}`);
@@ -202,6 +205,9 @@ export class SummaryInputCell extends Widget {
       await this._renderMarkdown(body, source);
     } else if (this._editorServices) {
       this._renderCodeEditor(body);
+      if (this.cellModel.type === 'code' && this._onRun) {
+        this._renderRunButton(n);
+      }
     } else {
       // Fallback when editor services aren't available — keeps the widget
       // useful in unit tests / standalone construction.
@@ -210,6 +216,29 @@ export class SummaryInputCell extends Widget {
       pre.textContent = source;
       body.appendChild(pre);
     }
+  }
+
+  /**
+   * Inject a small Run button (top-left of the cell, immediately right of
+   * the drag grip). Click triggers the supplied `_onRun` callback, which
+   * routes through LayoutCanvas → index.ts → CodeCell.execute on the
+   * underlying notebook cell. Outputs flow back through the existing
+   * SummaryOutputCell pipeline, so this method only handles the trigger.
+   */
+  private _renderRunButton(host: HTMLElement): void {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'jp-CellLayout-runButton';
+    btn.title = 'Run cell (Shift+Enter inside the editor also works)';
+    btn.setAttribute('aria-label', 'Run cell');
+    btn.textContent = '▶';
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._onRun?.();
+    });
+    btn.addEventListener('pointerdown', e => e.stopPropagation());
+    host.appendChild(btn);
   }
 
   /**
