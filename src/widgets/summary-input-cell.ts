@@ -90,6 +90,11 @@ export class SummaryInputCell extends Widget {
   private _editor?: CodeEditorWrapper;
   private _onRun?: () => void;
   private _callbacks?: IInputLayoutCallbacks;
+  // Markdown cells start in rendered mode and flip to source-editor mode
+  // via the in-cell ✎ button. Transient (per-widget-instance) state — a
+  // canvas refresh resets to rendered, which is acceptable since edits
+  // already persist via the shared cell model.
+  private _markdownEditing = false;
 
   constructor(
     private readonly cellModel: ICellModel,
@@ -202,7 +207,14 @@ export class SummaryInputCell extends Widget {
     const source = coerceText(this.cellModel.sharedModel.getSource());
 
     if (this.cellModel.type === 'markdown' && this._rendermime) {
-      await this._renderMarkdown(body, source);
+      if (this._markdownEditing && this._editorServices) {
+        this._renderCodeEditor(body);
+      } else {
+        await this._renderMarkdown(body, source);
+      }
+      if (this._editorServices) {
+        this._renderMarkdownToggleButton(n);
+      }
     } else if (this._editorServices) {
       this._renderCodeEditor(body);
       if (this.cellModel.type === 'code' && this._onRun) {
@@ -216,6 +228,30 @@ export class SummaryInputCell extends Widget {
       pre.textContent = source;
       body.appendChild(pre);
     }
+  }
+
+  /**
+   * Toggle button for markdown cells: ✎ when rendered (click → enter
+   * source-edit mode), ✓ when editing (click → re-render). State is
+   * per-widget-instance, so a canvas refresh resets to rendered — but
+   * edits themselves persist via the shared cell model.
+   */
+  private _renderMarkdownToggleButton(host: HTMLElement): void {
+    const editing = this._markdownEditing;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'jp-CellLayout-mdToggle';
+    btn.title = editing ? 'Finish editing markdown' : 'Edit markdown source';
+    btn.setAttribute('aria-label', btn.title);
+    btn.textContent = editing ? '✓' : '✎';
+    btn.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._markdownEditing = !this._markdownEditing;
+      void this._render();
+    });
+    btn.addEventListener('pointerdown', e => e.stopPropagation());
+    host.appendChild(btn);
   }
 
   /**
