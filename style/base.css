@@ -122,9 +122,43 @@
   outline-offset: 1px;
 }
 
-/* Suppress the hover-link outline during PDF export so it doesn't print. */
-.jp-CellLayout-exporting .jp-CellLayout-cellGroupHover {
+/* Pinned highlight: persistent ring on the active cell's whole group.
+ * Survives scrolling, drags, and other on-canvas activity — useful when
+ * input and outputs are pages apart. Set by clicking any cell slot;
+ * cleared by Esc inside the canvas or clicking an empty page area.
+ * Solid green so it's distinguishable from the dashed-blue hover ring. */
+.jp-CellLayout-cellGroupPinned {
+  outline: 2px solid var(--jp-success-color1, #4caf50);
+  outline-offset: 2px;
+}
+
+/* Newly-added cell highlight: a more pronounced ring with a slow pulse,
+ * applied to every slot of a cell the user just inserted in edit mode.
+ * The pulse drops when the user first interacts with the cell (drag,
+ * resize, click, or type). Z-order is also lifted by `bringCellToFront`
+ * so the cell isn't hidden under existing cells. */
+.jp-CellLayout-newCell {
+  outline: 3px solid var(--jp-warn-color1, #ff9800);
+  outline-offset: 1px;
+  animation: jp-CellLayout-newCellPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes jp-CellLayout-newCellPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.0);
+  }
+  50% {
+    box-shadow: 0 0 14px 4px rgba(255, 152, 0, 0.55);
+  }
+}
+
+/* Suppress hover-link, pinned, and new-cell highlights during PDF export. */
+.jp-CellLayout-exporting .jp-CellLayout-cellGroupHover,
+.jp-CellLayout-exporting .jp-CellLayout-cellGroupPinned,
+.jp-CellLayout-exporting .jp-CellLayout-newCell {
   outline: none;
+  box-shadow: none;
+  animation: none;
 }
 
 .jp-CellLayout-handle {

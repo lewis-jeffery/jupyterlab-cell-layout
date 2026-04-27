@@ -44,6 +44,8 @@ export class LayoutCanvas extends Widget {
   // position that overlaps an existing cell.
   private _knownCellIds = new Set<string>();
   private _hoverLinkDispose: (() => void) | null = null;
+  private _newCellDismissDispose: (() => void) | null = null;
+  private _pinDispose: (() => void) | null = null;
 
   constructor(
     private readonly coordinator: CellCoordinator,
@@ -80,6 +82,8 @@ export class LayoutCanvas extends Widget {
       }
     }
     this._wireHoverLinking();
+    this._wireNewCellDismiss();
+    this._wirePinHandling();
   }
 
   /**
@@ -142,6 +146,86 @@ export class LayoutCanvas extends Widget {
     };
   }
 
+  /**
+   * Persistent highlight on the active cell's group. Survives scrolling
+   * and other on-canvas activity — useful when input and output slots
+   * are on different pages and the transient hover-link can't follow.
+   *
+   * Pin moves with `_activeCellId` (which `bringCellToFront` updates on
+   * every interact). Two ways to clear: pressing Escape inside the
+   * canvas, or clicking on an empty area of the page.
+   */
+  private _wirePinHandling(): void {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape' && this._activeCellId) {
+        this._activeCellId = null;
+        this._updatePinHighlight();
+      }
+    };
+    const onPointerDown = (e: PointerEvent): void => {
+      if (!this._activeCellId) {
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      // Click landed on a slot — interact will set a new pin.
+      if (target?.closest?.('.jp-CellLayout-input, .jp-CellLayout-output')) {
+        return;
+      }
+      // Click on empty page area — drop the pin.
+      this._activeCellId = null;
+      this._updatePinHighlight();
+    };
+    this.node.addEventListener('keydown', onKeyDown);
+    this._page.addEventListener('pointerdown', onPointerDown);
+    this._pinDispose = () => {
+      this.node.removeEventListener('keydown', onKeyDown);
+      this._page.removeEventListener('pointerdown', onPointerDown);
+    };
+  }
+
+  private _updatePinHighlight(): void {
+    const PIN = 'jp-CellLayout-cellGroupPinned';
+    this._page
+      .querySelectorAll(`.${PIN}`)
+      .forEach(el => el.classList.remove(PIN));
+    if (!this._activeCellId) {
+      return;
+    }
+    this._page
+      .querySelectorAll(`[data-cell-id="${this._activeCellId}"]`)
+      .forEach(el => el.classList.add(PIN));
+  }
+
+  /**
+   * Drop the "newly added" highlight from a cell as soon as the user
+   * interacts with it — pointerdown anywhere on the cell (drag, resize,
+   * click) or keydown inside its editor (typing). Capture phase so we
+   * see the event before any inner widget can stopPropagation.
+   */
+  private _wireNewCellDismiss(): void {
+    const dismiss = (e: Event): void => {
+      const target = e.target as HTMLElement | null;
+      const slot = target?.closest?.(
+        '.jp-CellLayout-newCell'
+      ) as HTMLElement | null;
+      if (!slot) {
+        return;
+      }
+      const cellId = slot.dataset.cellId;
+      if (cellId) {
+        this._dismissNewCellHighlight(cellId);
+      }
+    };
+    this._page.addEventListener('pointerdown', dismiss, { capture: true });
+    this._page.addEventListener('keydown', dismiss, { capture: true });
+    this._newCellDismissDispose = () => {
+      this._page.removeEventListener('pointerdown', dismiss, {
+        capture: true
+      });
+      this._page.removeEventListener('keydown', dismiss, { capture: true });
+    };
+  }
+
   private _onSettingsChanged(): void {
     if (!this.isVisible) {
       return;
@@ -158,6 +242,10 @@ export class LayoutCanvas extends Widget {
     this.coordinator.settingsChanged.disconnect(this._onSettingsChanged, this);
     this._hoverLinkDispose?.();
     this._hoverLinkDispose = null;
+    this._newCellDismissDispose?.();
+    this._newCellDismissDispose = null;
+    this._pinDispose?.();
+    this._pinDispose = null;
     this._clearCells();
     super.dispose();
   }
@@ -208,12 +296,29 @@ export class LayoutCanvas extends Widget {
       }
     }
     // Lift any newly-added cell to the top of the z-order so it's visible
-    // even if its default-layout position lands under an existing cell.
-    // Done after all widgets are in the DOM so the bringCellToFront()
-    // logic (which reads sibling z-indexes) sees the final state.
+    // even if its default-layout position lands under an existing cell,
+    // and apply a "new cell" highlight class to its slots so the user can
+    // spot it on a busy canvas. The highlight is dismissed on the next
+    // interaction with that cell (drag, resize, click, type) — see
+    // `_wireNewCellDismiss`.
     for (const cellId of newlyAdded) {
       this.bringCellToFront(cellId);
+      const matching = this._page.querySelectorAll(
+        `[data-cell-id="${cellId}"]`
+      );
+      matching.forEach(el => el.classList.add('jp-CellLayout-newCell'));
     }
+    // Re-apply the pinned-cell highlight after the DOM is rebuilt — the
+    // active cell id survives refresh, but its slot nodes were just
+    // recreated and lost the class.
+    this._updatePinHighlight();
+  }
+
+  private _dismissNewCellHighlight(cellId: string): void {
+    const matching = this._page.querySelectorAll(
+      `[data-cell-id="${cellId}"]`
+    );
+    matching.forEach(el => el.classList.remove('jp-CellLayout-newCell'));
   }
 
   private _scheduleOutputRefresh(): void {
@@ -346,6 +451,7 @@ export class LayoutCanvas extends Widget {
 
   bringCellToFront(cellId: string): void {
     this._activeCellId = cellId;
+    this._updatePinHighlight();
     const group = this._groups.get(cellId);
     if (!group) {
       return;
