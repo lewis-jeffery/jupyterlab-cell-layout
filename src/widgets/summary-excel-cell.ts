@@ -4,6 +4,7 @@ import type {
   Alignment,
   CellValue,
   ExcelBridge,
+  IExcelFormats,
   ISubscription
 } from '../managers/excel-bridge';
 import type {
@@ -144,11 +145,11 @@ export class SummaryExcelCell extends Widget {
       this._initialPushReceived = true;
     };
     this._subscription = this._bridge.subscribe(this._link, {
-      onData: (rows, alignments) => {
+      onData: (rows, formats) => {
         if (this._excelDisposed) {
           return;
         }
-        this._renderTable(rows, alignments);
+        this._renderTable(rows, formats);
         const stamp = new Date().toLocaleTimeString();
         this._showStatus(`${this._link.sheet}!${this._link.range} · ${stamp}`);
         settle();
@@ -158,7 +159,7 @@ export class SummaryExcelCell extends Widget {
           return;
         }
         if (!this._initialPushReceived) {
-          this._renderTable([], []);
+          this._renderTable([], emptyFormats());
         }
         this._showStatus(`Error: ${msg}`, true);
         settle();
@@ -241,14 +242,14 @@ export class SummaryExcelCell extends Widget {
       if (this._excelDisposed) {
         return;
       }
-      this._renderTable(result.rows, result.alignments);
+      this._renderTable(result.rows, result.formats);
       const stamp = new Date().toLocaleTimeString();
       this._showStatus(`${this._link.sheet}!${this._link.range} · ${stamp}`);
     } catch (err) {
       if (this._excelDisposed) {
         return;
       }
-      this._renderTable([], []);
+      this._renderTable([], emptyFormats());
       this._showStatus(
         `Error: ${(err as Error).message ?? String(err)}`,
         true
@@ -261,7 +262,7 @@ export class SummaryExcelCell extends Widget {
 
   private _renderTable(
     rows: ReadonlyArray<ReadonlyArray<CellValue>>,
-    alignments: ReadonlyArray<ReadonlyArray<Alignment>>
+    formats: IExcelFormats
   ): void {
     const body = this._bodyEl;
     if (!body) {
@@ -279,13 +280,18 @@ export class SummaryExcelCell extends Widget {
     table.className = 'jp-CellLayout-excelTable';
     for (let r = 0; r < rows.length; r++) {
       const row = rows[r];
-      const alignRow = alignments[r] ?? [];
       const tr = document.createElement('tr');
       for (let c = 0; c < row.length; c++) {
         const cell = row[c];
         const td = document.createElement('td');
         td.textContent = formatCell(cell);
-        applyCellAlignment(td, cell, alignRow[c] ?? null);
+        applyCellFormatting(td, cell, {
+          align: formats.align[r]?.[c] ?? null,
+          bold: formats.bold[r]?.[c] ?? null,
+          italic: formats.italic[r]?.[c] ?? null,
+          fg: formats.fg[r]?.[c] ?? null,
+          bg: formats.bg[r]?.[c] ?? null
+        });
         tr.appendChild(td);
       }
       table.appendChild(tr);
@@ -316,22 +322,48 @@ function formatCell(v: CellValue): string {
   return String(v);
 }
 
-/**
- * Apply Excel's horizontal alignment to a `<td>`. Explicit alignment from
- * Excel ('left' / 'center' / 'right') wins. For 'general' or unknown, fall
- * back to the cell-type default — numbers right, everything else left —
- * which matches Excel's "general" rendering.
- */
-function applyCellAlignment(
+interface IPerCellFormats {
+  align: Alignment;
+  bold: boolean | null;
+  italic: boolean | null;
+  fg: string | null;
+  bg: string | null;
+}
+
+/** Apply Excel's per-cell formatting to a `<td>`. Explicit values from
+ * Excel win; unknowns fall back to defaults that match Excel's rendering
+ * (numbers right-aligned by default; black text on no fill). */
+function applyCellFormatting(
   td: HTMLTableCellElement,
   value: CellValue,
-  align: Alignment
+  fmt: IPerCellFormats
 ): void {
-  if (align === 'left' || align === 'center' || align === 'right') {
-    td.style.textAlign = align;
-    return;
-  }
-  if (typeof value === 'number') {
+  if (fmt.align === 'left' || fmt.align === 'center' || fmt.align === 'right') {
+    td.style.textAlign = fmt.align;
+  } else if (typeof value === 'number') {
     td.classList.add('jp-CellLayout-excelNum');
   }
+  if (fmt.bold === true) {
+    td.style.fontWeight = 'bold';
+  }
+  if (fmt.italic === true) {
+    td.style.fontStyle = 'italic';
+  }
+  if (fmt.fg) {
+    td.style.color = fmt.fg;
+  }
+  if (fmt.bg) {
+    td.style.backgroundColor = fmt.bg;
+  }
+}
+
+/** A fully-shaped, all-empty IExcelFormats for the error fallback path. */
+function emptyFormats(): IExcelFormats {
+  return {
+    align: [],
+    bold: [],
+    italic: [],
+    fg: [],
+    bg: []
+  };
 }

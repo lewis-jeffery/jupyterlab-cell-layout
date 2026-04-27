@@ -52,7 +52,7 @@ class _Subscription:
         "sheet",
         "range_name",
         "last_value",
-        "last_alignments",
+        "last_formats",
         "last_error",
     )
 
@@ -64,7 +64,7 @@ class _Subscription:
         self.sheet = sheet
         self.range_name = range_name
         self.last_value: Optional[List[List[Any]]] = None
-        self.last_alignments: Optional[List[List[Optional[str]]]] = None
+        self.last_formats: Optional[Dict[str, List[List[Any]]]] = None
         self.last_error: Optional[str] = None
 
 
@@ -153,7 +153,7 @@ def _send_error(comm, request_id, message: str) -> None:
 
 def _handle_read(comm, data) -> None:
     request_id = data.get("request_id")
-    rows, alignments = _read_range(
+    rows, formats = _read_range(
         workbook=data.get("workbook"),
         sheet=data.get("sheet"),
         range_name=data.get("range"),
@@ -163,7 +163,7 @@ def _handle_read(comm, data) -> None:
             "type": "data",
             "request_id": request_id,
             "rows": rows,
-            "alignments": alignments,
+            "formats": formats,
         }
     )
 
@@ -186,15 +186,15 @@ def _handle_subscribe(comm, comm_id: int, data) -> None:
     # Send initial value immediately so the UI doesn't sit blank for one
     # poll interval before the first push.
     try:
-        rows, alignments = _read_range(workbook, sheet, range_name)
+        rows, formats = _read_range(workbook, sheet, range_name)
         sub.last_value = rows
-        sub.last_alignments = alignments
+        sub.last_formats = formats
         comm.send(
             {
                 "type": "data",
                 "subscription_key": key,
                 "rows": rows,
-                "alignments": alignments,
+                "formats": formats,
             }
         )
     except Exception as exc:  # noqa: BLE001
@@ -247,7 +247,7 @@ def _poll_loop() -> None:
 
 def _poll_one(sub: "_Subscription") -> None:
     try:
-        rows, alignments = _read_range(
+        rows, formats = _read_range(
             sub.workbook, sub.sheet, sub.range_name
         )
     except Exception as exc:  # noqa: BLE001
@@ -265,10 +265,10 @@ def _poll_one(sub: "_Subscription") -> None:
             except Exception:  # noqa: BLE001
                 pass
         return
-    if rows == sub.last_value and alignments == sub.last_alignments:
+    if rows == sub.last_value and formats == sub.last_formats:
         return
     sub.last_value = rows
-    sub.last_alignments = alignments
+    sub.last_formats = formats
     sub.last_error = None
     try:
         sub.comm.send(
@@ -276,7 +276,7 @@ def _poll_one(sub: "_Subscription") -> None:
                 "type": "data",
                 "subscription_key": sub.key,
                 "rows": rows,
-                "alignments": alignments,
+                "formats": formats,
             }
         )
     except Exception:  # noqa: BLE001
@@ -286,11 +286,13 @@ def _poll_one(sub: "_Subscription") -> None:
 
 
 def _read_range(workbook, sheet, range_name):
-    """Return ``(rows, alignments)`` for a named range.
+    """Return ``(rows, formats)`` for a named range.
 
-    `rows` is a 2-D list of cell values (see _to_rows). `alignments` is a
-    parallel 2-D list of strings: 'left' / 'center' / 'right' / 'general'
-    or None when the read fails for that cell.
+    ``rows`` is a 2-D list of cell values (see ``_to_rows``).
+    ``formats`` is a dict whose keys are format names (``'align'``,
+    ``'bold'``, ``'italic'``, ``'fg'``, ``'bg'``) and values are 2-D lists
+    parallel to ``rows``. Cells where a property couldn't be read carry
+    ``None`` for that format.
     """
     if not workbook or not sheet or not range_name:
         raise ValueError("workbook, sheet, and range are all required")
@@ -318,17 +320,39 @@ def _read_range(workbook, sheet, range_name):
         ) from exc
 
     rows = _to_rows(rng.value)
-    alignments = _read_alignments(rng, rows)
-    return rows, alignments
+    formats = _read_formats(rng, rows)
+    return rows, formats
 
 
-def _read_alignments(rng, rows: List[List[Any]]) -> List[List[Optional[str]]]:
-    """Read horizontal alignment per cell in `rng`, shaped to match `rows`.
+def _read_formats(rng, rows: List[List[Any]]) -> Dict[str, List[List[Any]]]:
+    """Pull every supported format from `rng`, shaped to match `rows`.
 
-    Iterating cells via xlwings is slow on Mac (each property read is an
-    AppleScript round-trip). Try the bulk read first — if every cell in
-    the range shares one alignment, xlwings returns a single value and we
-    avoid the loop. On a mixed range, fall back to per-cell iteration.
+    Mac note: only `align` is currently supplied. Excel for Mac's
+    AppleScript bridge returns the `k.missing_value` sentinel for `bold`,
+    `italic`, `font.color`, and doesn't expose a working `interior`
+    property at all — so those formats can't be read via xlwings on Mac.
+    The frontend's coercer fills in nulls for any field this dict omits;
+    the keys will return when Windows COM support lands (#35), or via a
+    file-based openpyxl fallback if that path is taken first.
+    """
+    return {
+        "align": _read_format_grid(
+            rng, rows, _get_alignment, _normalise_alignment
+        ),
+    }
+
+
+def _read_format_grid(rng, rows, getter, normalise):
+    """Read one formatting property across every cell in `rng`.
+
+    Try a bulk read first — if every cell shares one value the underlying
+    API returns a single value and we avoid per-cell iteration. On a range
+    with mixed values the bulk read returns ``None`` (or a sentinel that
+    normalise rejects), and we fall back to one read per cell.
+
+    Mac (appscript) and Windows (COM) both follow this pattern. On Mac,
+    each per-cell read is one AppleScript round-trip — slow but only
+    incurred for actually-mixed properties.
     """
     if not rows:
         return []
@@ -336,38 +360,38 @@ def _read_alignments(rng, rows: List[List[Any]]) -> List[List[Optional[str]]]:
     width = len(rows[0]) if rows[0] else 0
     if width == 0:
         return [[] for _ in rows]
-    bulk = _normalise_alignment(_safe_get_alignment(rng))
+    bulk = normalise(getter(rng))
     if bulk is not None:
         return [[bulk for _ in range(width)] for _ in range(height)]
-    # Mixed alignment in the range — read each cell.
-    out: List[List[Optional[str]]] = []
+    out = []
     for r in range(height):
-        row: List[Optional[str]] = []
+        row = []
         for c in range(width):
             try:
                 cell = rng[r, c]
             except Exception:  # noqa: BLE001
                 row.append(None)
                 continue
-            row.append(_normalise_alignment(_safe_get_alignment(cell)))
+            row.append(normalise(getter(cell)))
         out.append(row)
     return out
 
 
-def _safe_get_alignment(rng) -> Any:
-    """Read the horizontal alignment of `rng` via the xlwings api object.
+# --- per-property getters ----------------------------------------------------
+
+def _get_alignment(rng) -> Any:
+    """Read the horizontal alignment property off `rng.api`.
 
     Cross-platform handling:
     - Windows COM exposes ``api.HorizontalAlignment`` as a property that
       auto-evaluates to an integer xlHAlign* constant.
     - Mac (xlwings via appscript) exposes ``api.horizontal_alignment`` as
       a lazy ``appscript.Reference``. Reading the value requires
-      ``.get()``; without it the function returned a Reference object that
-      ``_normalise_alignment`` couldn't parse, so all cells looked
-      perpetually unchanged.
+      ``.get()`` — handled by ``_resolve_lazy``.
 
-    Returns None if the property isn't accessible (xlwings version
-    variance, mixed-cell sentinel, get() failure, etc.).
+    Mac appscript creates a Reference for any attribute name (including
+    wrong-cased ones), and the bogus reference's ``.get()`` raises.
+    Falling through to the next casing matters.
     """
     try:
         api = rng.api
@@ -381,10 +405,6 @@ def _safe_get_alignment(rng) -> Any:
         resolved = _resolve_lazy(candidate)
         if resolved is not None:
             return resolved
-        # Mac appscript returns a Reference for any attribute name, including
-        # ones the scripting dictionary doesn't actually define; the wrong
-        # name's .get() raises and we drop to None. Fall through to try the
-        # other casing rather than giving up after the first miss.
     return None
 
 

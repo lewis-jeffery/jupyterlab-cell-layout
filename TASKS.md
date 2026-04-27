@@ -41,9 +41,9 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 
 ⏳ **Excel — future phases:**
 - **#32** ⏸ Phase 2 (editable sub-ranges) — **deprioritised** under the one-way-display model: editing happens in Excel itself; summary is read-only for distribution.
-- **#33** 🟢 Phase 3 (live sync via 1 s poll + diff push): persistent comm, kernel daemon polling thread, `subscribe` / `unsubscribe` / `read` message types, polling pauses while user code executes. Implemented; awaiting end-to-end verification with a live workbook.
-- **#34** ⬜ Phase 4: formatting passthrough (colours, bold, number formats, merged cells).
-- **#35** ⬜ Phase 5: robustness (Excel-not-running affordance, debounced concurrent edits, **Windows COM `pythoncom.CoInitialize()` per polling thread — required before any PyPI publish**).
+- **#33** ✅ Phase 3 (live sync via 1 s poll + diff push): persistent comm, kernel daemon polling thread, `subscribe` / `unsubscribe` / `read` message types, polling pauses while user code executes.
+- **#34** 🟡 Phase 4 (formatting passthrough): **alignment shipped on Mac**. Bold / italic / font colour / fill colour are out of scope on Mac because Excel for Mac's AppleScript bridge returns the `k.missing_value` sentinel for `font.bold` / `font.color` (even per-cell) and doesn't expose a working `interior` property at all. The `formats` payload structure is in place — the Windows code path (#35) can populate the omitted fields without a frontend change. A possible Mac fallback is to read the saved `.xlsx` via `openpyxl` and watch the file mtime for changes; not implemented (means user must save in Excel before formatting changes propagate). Number formats and merged cells also deferred.
+- **#35** ⬜ Phase 5: robustness (Excel-not-running affordance, debounced concurrent edits, **Windows COM `pythoncom.CoInitialize()` per polling thread — required before any PyPI publish**, and the `bold` / `italic` / `fg` / `bg` properties land here on Windows because COM exposes them properly).
 - **#41** ⬜ Multi-cell select + move (drag-marquee, shift-click; "select all above/below active cell" command). Phase 4 item.
 
 ## ⏸ Deferred

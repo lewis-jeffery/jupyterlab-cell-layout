@@ -9,14 +9,29 @@ export type CellValue = string | number | boolean | null;
 /** Per-cell horizontal alignment as seen in Excel. `null` = unknown. */
 export type Alignment = 'left' | 'center' | 'right' | 'general' | null;
 
+/**
+ * Per-cell formatting pulled from Excel. Each field is a 2-D array
+ * shape-matched to `rows`. `null` in any cell means "unknown / use the
+ * default" for that property.
+ */
+export interface IExcelFormats {
+  align: Alignment[][];
+  bold: (boolean | null)[][];
+  italic: (boolean | null)[][];
+  /** Font colour as a `#rrggbb` CSS string. */
+  fg: (string | null)[][];
+  /** Cell fill colour as a `#rrggbb` CSS string. */
+  bg: (string | null)[][];
+}
+
 export interface IExcelReadResult {
   rows: ReadonlyArray<ReadonlyArray<CellValue>>;
-  alignments: ReadonlyArray<ReadonlyArray<Alignment>>;
+  formats: IExcelFormats;
 }
 
 export interface ISubscriptionHandler {
   /** Called whenever the kernel pushes new data for this subscription. */
-  onData: (rows: CellValue[][], alignments: Alignment[][]) => void;
+  onData: (rows: CellValue[][], formats: IExcelFormats) => void;
   /** Called when the kernel reports an error for this subscription. */
   onError: (message: string) => void;
 }
@@ -182,7 +197,7 @@ export class ExcelBridge {
       request_id?: string;
       subscription_key?: string;
       rows?: unknown;
-      alignments?: unknown;
+      formats?: unknown;
       message?: string;
     };
     // Read replies are correlated by request_id.
@@ -196,7 +211,7 @@ export class ExcelBridge {
         const rows = coerceRows(data.rows);
         waiter.resolve({
           rows,
-          alignments: coerceAlignments(data.alignments, rows)
+          formats: coerceFormats(data.formats, rows)
         });
       } else {
         waiter.reject(
@@ -213,7 +228,7 @@ export class ExcelBridge {
       }
       if (data.type === 'data') {
         const rows = coerceRows(data.rows);
-        handler.onData(rows, coerceAlignments(data.alignments, rows));
+        handler.onData(rows, coerceFormats(data.formats, rows));
       } else if (data.type === 'error') {
         handler.onError(data.message ?? 'Unknown error from kernel');
       }
@@ -256,17 +271,33 @@ function coerceValue(v: unknown): CellValue {
 }
 
 /**
- * Coerce the `alignments` field from a comm payload into a 2-D array
- * shape-matched to `rows`. Older kernels (or read failures) may omit
- * alignments — in that case every cell is `null` (means "render with
- * default alignment").
+ * Coerce a `formats` payload from the kernel into a fully-shaped
+ * `IExcelFormats`, with arrays sized to match `rows`. Older kernels (or
+ * read failures) may omit formats entirely or omit individual fields —
+ * in those cases every cell falls back to `null` for that field, which
+ * the renderer treats as "use the default".
  */
-function coerceAlignments(
+function coerceFormats(raw: unknown, rows: CellValue[][]): IExcelFormats {
+  const obj = (raw && typeof raw === 'object' ? raw : {}) as Record<
+    string,
+    unknown
+  >;
+  return {
+    align: coerceGrid(obj.align, rows, coerceAlignment),
+    bold: coerceGrid(obj.bold, rows, coerceBoolish),
+    italic: coerceGrid(obj.italic, rows, coerceBoolish),
+    fg: coerceGrid(obj.fg, rows, coerceColor),
+    bg: coerceGrid(obj.bg, rows, coerceColor)
+  };
+}
+
+function coerceGrid<T>(
   raw: unknown,
-  rows: CellValue[][]
-): Alignment[][] {
-  const out: Alignment[][] = [];
-  const fallbackRow = (width: number): Alignment[] =>
+  rows: CellValue[][],
+  cellCoercer: (v: unknown) => T | null
+): (T | null)[][] {
+  const out: (T | null)[][] = [];
+  const fallbackRow = (width: number): (T | null)[] =>
     Array.from({ length: width }, () => null);
   if (!Array.isArray(raw)) {
     return rows.map(r => fallbackRow(r.length));
@@ -278,9 +309,9 @@ function coerceAlignments(
       out.push(fallbackRow(width));
       continue;
     }
-    const row: Alignment[] = [];
+    const row: (T | null)[] = [];
     for (let j = 0; j < width; j++) {
-      row.push(coerceAlignment(rawRow[j]));
+      row.push(cellCoercer(rawRow[j]));
     }
     out.push(row);
   }
@@ -292,4 +323,12 @@ function coerceAlignment(v: unknown): Alignment {
     return v;
   }
   return null;
+}
+
+function coerceBoolish(v: unknown): boolean | null {
+  return typeof v === 'boolean' ? v : null;
+}
+
+function coerceColor(v: unknown): string | null {
+  return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v : null;
 }
