@@ -9,10 +9,11 @@ import type { ExcelBridge } from '../managers/excel-bridge';
 import { OutputProcessor } from '../managers/output-processor';
 import type { ICellLayout, OutputSlotId } from '../managers/metadata';
 
-import type { ISnapHandler } from './draggable';
+import type { IDragSibling, ISnapHandler } from './draggable';
 import { SummaryExcelCell } from './summary-excel-cell';
 import { SummaryInputCell } from './summary-input-cell';
 import { SummaryOutputCell } from './summary-output-cell';
+import { pxToMm } from './units';
 
 export type SlotKey = 'input' | OutputSlotId;
 
@@ -29,6 +30,10 @@ export interface ISummaryCellOptions {
   onRunCell?: (cellId: string) => void;
   onInteract?: () => void;
   snapHandlerFactory?: ISnapHandlerFactory;
+  /** Whether the canvas considers this cell currently linked for group
+   *  drag. Consulted on each pointerdown so flipping the link mid-session
+   *  takes immediate effect. */
+  isCellLinked?: (cellId: string) => boolean;
 }
 
 /**
@@ -68,6 +73,62 @@ export class SummaryCellWidget {
       ? () => coordinator.gridSnapMm()
       : undefined;
 
+    const isCellLinked = options.isCellLinked;
+    const domPosMm = (node: HTMLElement): { x: number; y: number } => ({
+      x: pxToMm(node.offsetLeft),
+      y: pxToMm(node.offsetTop)
+    });
+    // Group-drag siblings for the input slot: each output, in DOM order.
+    // Empty unless the canvas considers this cell currently linked
+    // (double-clicked). Closure reads `this.outputs` at call time, so the
+    // list is correct even though the outputs are constructed below.
+    const getInputSiblings = (): IDragSibling[] => {
+      if (!coordinator || !isCellLinked?.(id)) {
+        return [];
+      }
+      return this.outputs.map(out => ({
+        node: out.node,
+        getInitialMm: () => domPosMm(out.node),
+        onPositionChange: pos => {
+          out.commitPosition(pos);
+          coordinator.updateOutputPosition(id, out.slotId, pos);
+        }
+      }));
+    };
+    // For an output slot's drag: siblings are the input + every other
+    // output of the same cell.
+    const getOutputSiblings = (excludeSlot: OutputSlotId): IDragSibling[] => {
+      if (!coordinator || !isCellLinked?.(id) || !this._main) {
+        return [];
+      }
+      const siblings: IDragSibling[] = [
+        {
+          node: this._main.node,
+          getInitialMm: () => domPosMm(this._main.node),
+          onPositionChange: pos => {
+            (this._main as SummaryInputCell | SummaryExcelCell).commitPosition(
+              pos
+            );
+            coordinator.updateInputPosition(id, pos);
+          }
+        }
+      ];
+      for (const out of this.outputs) {
+        if (out.slotId === excludeSlot) {
+          continue;
+        }
+        siblings.push({
+          node: out.node,
+          getInitialMm: () => domPosMm(out.node),
+          onPositionChange: pos => {
+            out.commitPosition(pos);
+            coordinator.updateOutputPosition(id, out.slotId, pos);
+          }
+        });
+      }
+      return siblings;
+    };
+
     if (layout.excel) {
       const excelCallbacks = coordinator
         ? {
@@ -84,7 +145,8 @@ export class SummaryCellWidget {
               }),
             getGridSnapMm,
             onInteract,
-            snapHandler: snapHandlerFactory?.(id, 'input') ?? undefined
+            snapHandler: snapHandlerFactory?.(id, 'input') ?? undefined,
+            getSiblings: getInputSiblings
           }
         : undefined;
       this._main = new SummaryExcelCell(layout.input, {
@@ -116,7 +178,8 @@ export class SummaryCellWidget {
           onInteract,
           onAutoFit: (size: { width: number; height: number }) =>
             coordinator.updateInputLayout(id, { size, auto_fit: false }),
-          snapHandler: snapHandlerFactory?.(id, 'input') ?? undefined
+          snapHandler: snapHandlerFactory?.(id, 'input') ?? undefined,
+          getSiblings: getInputSiblings
         }
       : undefined;
     const onRunCell = options.onRunCell;
@@ -166,7 +229,8 @@ export class SummaryCellWidget {
                 size,
                 auto_fit: false
               }),
-            snapHandler: snapHandlerFactory?.(id, slotId) ?? undefined
+            snapHandler: snapHandlerFactory?.(id, slotId) ?? undefined,
+            getSiblings: () => getOutputSiblings(slotId)
           }
         : undefined;
       const outputCell = new SummaryOutputCell(outLayout, items, {

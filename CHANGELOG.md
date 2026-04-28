@@ -2,6 +2,22 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## 1.0.0 — 2026-04-29
+
+First stable release. Consolidates the v0.x line — page-oriented summary view, drag/resize, multi-page canvas, searchable PDF export with link annotations, editable summary mode, smart alignment guides, and the Mac-beta Excel range view — into a release suitable for general use.
+
+Polish round added since v0.5.0 (`feat/v1-polish`):
+
+- **F1** Shift+Enter / Cmd+Enter inside the summary editor runs the cell, matching edit-mode behaviour.
+- **F2** Run button shows a busy state (orange ◐ pulse) while the cell executes.
+- **F4** Newly-added cells are lifted to the top of the z-stack and pulse orange until the user moves, resizes, or edits them — easier to spot on a busy canvas. Their related output slots get a dashed-blue outline on hover.
+- **F5** Click any cell to pin a solid green outline on its whole group (input + outputs); click elsewhere to clear. Useful when output slots have been positioned far from their input.
+- **F6** Each pinned slot grows a small "→" go-to button that scrolls to and briefly highlights the next-related slot in the same group.
+- **F7** Double-click a cell to *link* it for group drag — moves input and outputs together until you double-click again. Linked cells are outlined in dashed orange and float above other cells during drag (z-index 9999) so they stay visible.
+- **Page-delete render-aware fix** — deleting a trailing empty page no longer silently re-grows the page count. `ensureEnoughPages` now uses the same render-aware iteration as `deletePageAt`, so empty output-slot metadata on a page doesn't count as "occupying" the page.
+
+Pre-PyPI metadata work also landed: real `homepage` / `bugs` / `repository` URLs in `package.json`, optional `[excel]` extra in `pyproject.toml`, beta classifier, scientific-engineering topic, README rewritten for new users.
+
 ## 0.5.0 — 2026-04-27
 
 Editable summary mode. Summary view is no longer read-only — code cells can be edited and re-run in place, markdown cells flip between rendered and source-edit. Replaces the Excel-as-data-source pattern as the primary workflow.

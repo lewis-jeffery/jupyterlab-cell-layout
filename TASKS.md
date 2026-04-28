@@ -1,6 +1,6 @@
 # JupyterLab Cell Layout — Task List
 
-_Last updated: 2026-04-27 (v0.4.0 shipped; editable-summary work begun)_
+_Last updated: 2026-04-29 (v1.0.0 prep done on `feat/v1-polish`; awaiting merge to main)_
 
 Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · ⏸ deferred
 
@@ -37,17 +37,22 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 
 ## 🟢 In progress
 
-**Editable summary view — code-cell-driven workflow (started 2026-04-27 on `feat/editable-summary`):** #42 — major architectural shift: summary mode becomes a place to edit + run code cells in place, not just view them. The user's intended workflow is to put data in code cells (rather than Excel) and adjust + re-run a few values directly in the summary view to iterate. Output already updates reactively through the existing `SummaryOutputCell` once the cell re-runs, so most of the wiring is on the input side.
+**v1.0.0 release prep (`feat/v1-polish` at `9406eac` + metadata update):** ⬜ branch ready to merge to `main` and tag `v1.0.0`. Awaiting user instruction to commit metadata changes (package.json, pyproject.toml, README, CHANGELOG) and push.
 
-Stages:
-- **A** ⬜ Wire JL's CodeMirror editor into `SummaryInputCell` for code cells, read-only initially. Confirm the editor renders source with syntax highlighting and tracks model changes from edit-mode.
-- **B** ⬜ Enable editing — confirm edits flow back through the shared cell model to the original notebook cell.
-- **C** ⬜ Add a Run button (top-right of code cells); click → `CodeCell.execute(notebookCell, sessionContext)`. Surface busy/error states.
-- **D** ⬜ Markdown cells get an "edit / rendered" toggle in the same place; rendered by default.
-- **E** ⬜ Per-cell or per-notebook toggle so users with read-only summaries don't change behaviour. Default to enabled for new notebooks.
-- **F** ⬜ Polish: editor sizing strategy (auto-grow vs scroll), focus handling, error states, keyboard execution shortcut (Shift+Enter).
+**Editable summary view — code-cell-driven workflow:** #42 ✅ Shipped in v0.5.0 (stages A–D) and refined in `feat/v1-polish` (stages F1–F7).
 
-Ships as v0.5.0 when complete.
+- **A** ✅ CodeMirror in `SummaryInputCell` for code cells.
+- **B** ✅ Edits flow through the shared cell model.
+- **C** ✅ Run button (green ▶) executes via `CodeCell.execute`. Reactive output refresh ~100 ms.
+- **D** ✅ Markdown ✎/✓ edit/render toggle.
+- **E** ⏸ Dropped — editable mode is on by default; read-only kept as a future per-notebook toggle if anyone needs it.
+- **F1** ✅ Shift+Enter / Cmd+Enter from inside the summary editor.
+- **F2** ✅ Run button busy-state pulse.
+- **F3** ⏸ Auto-grow code cell — reverted; not necessary in practice.
+- **F4** ✅ Newly-added cells lifted + pulse highlight + hover-link related slots.
+- **F5** ✅ Click-to-pin solid green outline on the active cell's group.
+- **F6** ✅ Per-pinned-slot "→" go-to-next-related-slot button.
+- **F7** ✅ Double-click to link a cell for group drag.
 
 **Excel range view — shipped in v0.4.0 (`main` at `08e8d8b`):** #31 — read-only mirror of an open Excel named range via xlwings, with live sync (~1 s) and per-cell horizontal alignment passthrough. Mac-only for now; Windows COM is a Phase 5 prerequisite for any PyPI publish.
 

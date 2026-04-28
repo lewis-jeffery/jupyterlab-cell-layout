@@ -1,10 +1,16 @@
 import type * as nbformat from '@jupyterlab/nbformat';
 import { Widget } from '@lumino/widgets';
 
-import type { IOutputLayout, IPosition, ISize } from '../managers/metadata';
+import type {
+  IOutputLayout,
+  IPosition,
+  ISize,
+  OutputSlotId
+} from '../managers/metadata';
 import {
   enableDrag,
   type IDragController,
+  type IDragSibling,
   type ISnapHandler
 } from './draggable';
 import { enableResize, type IResizeController } from './resizable';
@@ -17,6 +23,7 @@ export interface IOutputLayoutCallbacks {
   onInteract?: () => void;
   onAutoFit?: (size: ISize) => void;
   snapHandler?: ISnapHandler;
+  getSiblings?: () => IDragSibling[];
 }
 
 export interface IOutputCellOptions {
@@ -60,7 +67,8 @@ export class SummaryOutputCell extends Widget {
         {
           getGridSnapMm: callbacks.getGridSnapMm,
           onInteract: callbacks.onInteract,
-          snapHandler: callbacks.snapHandler
+          snapHandler: callbacks.snapHandler,
+          getSiblings: callbacks.getSiblings
         }
       );
       this._resizeCtl = enableResize(
@@ -107,6 +115,21 @@ export class SummaryOutputCell extends Widget {
     this._render();
   }
 
+  /** Slot id (`output_a` or `output_b`) — needed by group-drag plumbing. */
+  get slotId(): OutputSlotId {
+    return this._outputLayout.output_id;
+  }
+
+  /**
+   * Update internal layout state and DOM in one call. Used by group drag
+   * to keep this cell's state in sync with on-canvas mutations performed
+   * by another slot's drag controller.
+   */
+  commitPosition(pos: IPosition): void {
+    this._outputLayout = { ...this._outputLayout, position: pos };
+    this._applyLayout();
+  }
+
   private _applyLayout(): void {
     const n = this.node;
     n.style.position = 'absolute';
@@ -130,6 +153,14 @@ export class SummaryOutputCell extends Widget {
     label.className = 'jp-CellLayout-label';
     label.textContent = this._displayLabel;
     n.appendChild(label);
+
+    const goto = document.createElement('button');
+    goto.type = 'button';
+    goto.className = 'jp-CellLayout-gotoButton';
+    goto.title = 'Go to next related slot';
+    goto.setAttribute('aria-label', 'Go to next related slot');
+    goto.textContent = '→';
+    n.appendChild(goto);
 
     const body = document.createElement('div');
     body.className = 'jp-CellLayout-outputBody';

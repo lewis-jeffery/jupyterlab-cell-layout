@@ -1,35 +1,89 @@
 # jupyterlab-cell-layout
 
-A JupyterLab 4 extension for drag-and-drop cell layout on a page-oriented canvas. Designed for engineering design documentation where a notebook's summary view doubles as a print-ready page.
+A JupyterLab 4 extension that turns a notebook into a page-oriented summary view — drag and resize cells onto A4 / A3 pages, edit and re-run them in place, and export the layout as a searchable PDF. Designed for engineering design documentation where the same notebook serves both as a working document and as a print-ready deliverable.
 
-## What it does
+## Highlights
 
-- **Summary mode** toggles an A4/A3 page view of the notebook. Cells render as draggable, resizable blocks with their input truncated to a configurable line count.
-- **Two output slots per cell** — text-ish outputs (streams, HTML, tracebacks) route to slot A; graphics (images, SVG, plotly, widgets) route to slot B. Both slots are independently positioned and resized.
-- **Portrait / landscape**, **page size** (A4 default, A3 option), **grid snap** — per-notebook, with JL settings as defaults for new notebooks.
-- **Click-to-front** layering for overlapping cells.
-- **Edit mode** is standard JupyterLab — no impact on regular notebook workflows. The summary layout lives in `notebook.metadata.cell_layout` as JSON, so standard JupyterLab installs open the notebook without issue.
-- **Coordinate system** is page-oriented (mm), not viewport-relative. WYSIWYG with a future PDF export (Phase 3, not yet built).
+- **Two views, one notebook.** Toggle between standard JupyterLab editing (`Ctrl+Shift+T`) and a page-oriented summary canvas. Layout state lives in `notebook.metadata.cell_layout`; vanilla JupyterLab installs open the file without issue.
+- **Editable summary mode.** Code cells render through JupyterLab's CodeMirror editor — type into them, press `Shift+Enter` (or click the green Run button), and outputs refresh in place. Markdown cells flip between rendered (with MathJax) and source-edit.
+- **Two output slots per cell.** Text-ish outputs (streams, HTML, tracebacks) go to slot A; graphics (PNG, SVG, plotly, widgets) go to slot B. Each slot is independently positioned, resized, and clipped.
+- **Page-oriented canvas.** A4 (default) or A3, portrait or landscape, 1–20 pages. 5 mm grid snap with smart alignment guides (snap to neighbouring cell edges and centres within 2 mm). All coordinates stored in millimetres.
+- **Searchable PDF export.** `html2canvas` + `jspdf` produces a bitmap-faithful PDF of the canvas with an invisible text overlay so PDF readers can search and select. Markdown links are emitted as clickable PDF link annotations. Cells that would straddle a page break are pushed whole to the next page.
+- **Excel range view (optional, Mac-only beta).** A summary cell can mirror a named range from an open Excel workbook via xlwings, with ~1 s live sync. Read-only — editing happens in Excel itself. See [Excel range view](#excel-range-view-optional) below.
 
-See [CLAUDE.md](./CLAUDE.md) for the full design specification and [TASKS.md](./TASKS.md) for the current roadmap and completed work.
+## Install
+
+Requires JupyterLab 4.3+ and Python 3.10+.
+
+```bash
+pip install jupyterlab-cell-layout
+```
+
+(For now this means installing from a clone — see [Development install](#development-install). PyPI publish is pending Windows COM support for the optional Excel feature.)
+
+After installing, launch JupyterLab and open any notebook. A toolbar group (mode toggle, orientation, page count, export PDF) appears at the right of the notebook toolbar.
+
+## Quick tour
+
+1. Open a notebook in JupyterLab.
+2. Click **Edit mode** in the toolbar (or press `Ctrl+Shift+T`) to flip to summary mode. Cells appear as movable blocks on an A4 canvas.
+3. Drag a cell by its left-edge grip strip; drag any of its eight resize handles to resize. Click any slot of a cell to bring the whole cell group to the front.
+4. Click into a code cell to edit it; press `Shift+Enter` or the green ▶ button to run. Output appears in slot A or B and refreshes within ~100 ms.
+5. Double-click a cell to *link* it for group drag — its inputs and outputs move together until you double-click again.
+6. Right-click a "Page N of M" badge in the bottom-right of any page for *Insert page above / below / Delete this page*. Whole-page operations shift cells below the boundary by one page-height.
+7. Click **Export PDF** to save `{notebook-name}.pdf` of the current layout.
 
 ## Keyboard shortcuts
 
 | Action | Shortcut |
 | --- | --- |
 | Toggle summary / edit mode | `Ctrl+Shift+T` |
-| Toggle active cell inclusion | `Ctrl+Shift+E` |
-| Show info dialog (debug) | Command palette: "Cell Layout: Show info (debug)" |
+| Toggle whether the active cell is included in summary view | `Ctrl+Shift+E` |
+| Append a page | `Ctrl+Shift+]` |
+| Remove the last page | `Ctrl+Shift+[` |
+| Run the active code cell from inside the summary editor | `Shift+Enter` or `Cmd+Enter` |
 
-## Requirements
+The command palette also exposes: orientation toggle, export PDF, mark/clear Excel link, insert/delete page, and a debug "show layout info" command.
 
-- Python 3.11+
-- Node.js 18+ (LTS recommended)
-- JupyterLab 4.3+
+## Settings
 
-## Install (for testing)
+Available in JupyterLab's *Advanced Settings Editor* under *Cell Layout*:
 
-Clone the repo and run the install script:
+| Setting | Default | Notes |
+| --- | --- | --- |
+| `pageSize` | `"A4"` | `"A4"` or `"A3"` — applied to brand-new notebooks |
+| `orientation` | `"portrait"` | `"portrait"` or `"landscape"` |
+| `gridSnap` | `5` | Grid snap step in millimetres |
+| `defaultSummaryLines` | `3` | Retained for back-compat; not used at render time |
+| `showReadingOrderBadges` | `true` | Numbered badges on cells in PDF export |
+| `smartGuides` | `true` | Snap to nearby cell / page edges and centres |
+
+These are global defaults seeded into a brand-new notebook's metadata. Existing notebooks keep whatever they have.
+
+## Excel range view (optional)
+
+A summary cell can mirror a named range from an open Excel workbook. Useful when the source-of-truth lives in Excel and you want it on the page next to your code-driven results.
+
+**Status:** Mac-only beta (xlwings via AppleScript). Windows COM support is required before PyPI publish — until then, install from source if you need this feature.
+
+Install xlwings into the same Python environment as your kernel:
+
+```bash
+pip install "jupyterlab-cell-layout[excel]"
+```
+
+Then once per kernel session:
+
+```python
+from jupyterlab_cell_layout.excel_bridge import register
+register()                        # default 1 s poll interval
+```
+
+Right-click any cell in summary mode and choose *Mark active cell as Excel range view*. Enter workbook / sheet / range. The cell now mirrors the named range live with horizontal alignment passthrough. Editing happens in Excel; summary view refreshes within ~1 s.
+
+Bold / italic / font colour / fill colour are not yet read on Mac because Excel for Mac's AppleScript bridge returns `k.missing_value` for those properties. The Windows COM path will populate them under the same comm-payload shape.
+
+## Development install
 
 ```bash
 git clone https://github.com/lewis-jeffery/jupyterlab-cell-layout.git
@@ -38,42 +92,36 @@ cd jupyterlab-cell-layout
 jupyter lab
 ```
 
-The install script runs an editable `pip install` (which triggers the TypeScript/webpack build via `hatch-jupyter-builder`) and registers the extension as a development labextension in your current Python environment.
+`install.sh` runs an editable `pip install` (which triggers the TypeScript / webpack build via `hatch-jupyter-builder`) and registers the extension as a development labextension. Re-running it on an already-installed system is idempotent — orphaned labextension symlinks across all `jupyter --paths` data dirs are cleaned up first.
 
-### Manual install
-
-```bash
-pip install --editable .
-jupyter labextension develop . --overwrite
-```
-
-## Uninstall
-
-```bash
-pip uninstall jupyterlab_cell_layout
-```
-
-Also remove the symlink inside `$(jupyter --data-dir)/labextensions/jupyterlab-cell-layout` if it lingers.
-
-## Development
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full dev loop (watch mode, Jest, Playwright).
+### Watch mode
 
 ```bash
 jlpm install
 jlpm watch           # terminal 1: rebuild on change
 jupyter lab          # terminal 2
-jlpm test            # Jest unit tests
 ```
+
+### Tests
+
+```bash
+jlpm test            # Jest unit tests (153 currently)
+```
+
+Playwright integration tests live in `ui-tests/`. One acceptance test reliably passes; the rest are blocked on an upstream Galata path-handling issue when programmatically creating notebooks.
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full dev loop and [CLAUDE.md](./CLAUDE.md) for the technical specification.
 
 ## Status
 
-- **Phase 1 (core infrastructure)** — complete
-- **Phase 2 (layout management: drag, resize, z-index, grid snap)** — complete
-- **Phase 3 (PDF export, polish, docs)** — not started
-- **Phase 4 (advanced features)** — not started
+- **Phase 1** (core infrastructure) — ✅ delivered
+- **Phase 2** (drag, resize, z-index, grid snap, smart guides) — ✅ delivered
+- **Phase 3** (multi-page canvas + searchable PDF export with link annotations) — ✅ delivered
+- **Phase 4** (templates, bulk operations, full keyboard navigation) — partial; smart guides shipped, rest deferred
+- **Editable summary mode** — ✅ delivered (v0.5.0)
+- **Excel range view** — ✅ Mac (read-only with live sync); Windows COM is pre-PyPI-publish work
 
-100 Jest unit tests passing; one Playwright acceptance test passing (rest blocked on an upstream Galata path-handling issue for programmatic notebook creation).
+153 Jest unit tests passing. See [CHANGELOG.md](./CHANGELOG.md) for release history and [TASKS.md](./TASKS.md) for the live roadmap.
 
 ## License
 

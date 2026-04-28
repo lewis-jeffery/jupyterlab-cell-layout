@@ -1,4 +1,4 @@
-import type { ICellModel } from '@jupyterlab/cells';
+import type { ICellModel, ICodeCellModel } from '@jupyterlab/cells';
 import {
   CodeEditorWrapper,
   type IEditorServices
@@ -10,6 +10,7 @@ import type { IInputLayout, IPosition, ISize } from '../managers/metadata';
 import {
   enableDrag,
   type IDragController,
+  type IDragSibling,
   type ISnapHandler
 } from './draggable';
 import { enableResize, type IResizeController } from './resizable';
@@ -46,6 +47,7 @@ export interface IInputLayoutCallbacks {
   onInteract?: () => void;
   onAutoFit?: (size: ISize) => void;
   snapHandler?: ISnapHandler;
+  getSiblings?: () => IDragSibling[];
 }
 
 export interface IInputCellOptions {
@@ -88,8 +90,11 @@ export class SummaryInputCell extends Widget {
   private _rendermime?: IRenderMimeRegistry;
   private _editorServices?: IEditorServices;
   private _editor?: CodeEditorWrapper;
+  private _editorKeydownDispose?: () => void;
   private _onRun?: () => void;
   private _callbacks?: IInputLayoutCallbacks;
+  private _runButton?: HTMLButtonElement;
+  private _stateChangedDispose?: () => void;
   // Markdown cells start in rendered mode and flip to source-editor mode
   // via the in-cell ✎ button. Transient (per-widget-instance) state — a
   // canvas refresh resets to rendered, which is acceptable since edits
@@ -124,7 +129,8 @@ export class SummaryInputCell extends Widget {
         {
           getGridSnapMm: callbacks.getGridSnapMm,
           onInteract: callbacks.onInteract,
-          snapHandler: callbacks.snapHandler
+          snapHandler: callbacks.snapHandler,
+          getSiblings: callbacks.getSiblings
         }
       );
       this._resizeCtl = enableResize(
@@ -158,9 +164,23 @@ export class SummaryInputCell extends Widget {
   dispose(): void {
     this._dragCtl?.dispose();
     this._resizeCtl?.dispose();
+    this._editorKeydownDispose?.();
+    this._editorKeydownDispose = undefined;
+    this._stateChangedDispose?.();
+    this._stateChangedDispose = undefined;
     this._editor?.dispose();
     this._editor = undefined;
     super.dispose();
+  }
+
+  /**
+   * Update internal layout state and DOM in one call. Used by group drag
+   * to keep this cell's state in sync with on-canvas mutations performed
+   * by another slot's drag controller.
+   */
+  commitPosition(pos: IPosition): void {
+    this._inputLayout = { ...this._inputLayout, position: pos };
+    this._applyLayout();
   }
 
   setLayout(next: IInputLayout): void {
@@ -183,10 +203,16 @@ export class SummaryInputCell extends Widget {
     // Tear down any prior editor before clearing the DOM. CodeMirror needs
     // its widget lifecycle observed cleanly; just reaping the DOM nodes
     // would leak the editor's internal state.
+    this._editorKeydownDispose?.();
+    this._editorKeydownDispose = undefined;
     if (this._editor) {
       this._editor.dispose();
       this._editor = undefined;
     }
+    // The Run button is recreated on every render; clear the ref so the
+    // stateChanged handler doesn't mutate a detached DOM node between
+    // _render calls.
+    this._runButton = undefined;
     const n = this.node;
     n.replaceChildren();
 
@@ -199,6 +225,14 @@ export class SummaryInputCell extends Widget {
     label.className = 'jp-CellLayout-label';
     label.textContent = this._displayLabel;
     n.appendChild(label);
+
+    const goto = document.createElement('button');
+    goto.type = 'button';
+    goto.className = 'jp-CellLayout-gotoButton';
+    goto.title = 'Go to next related slot';
+    goto.setAttribute('aria-label', 'Go to next related slot');
+    goto.textContent = '→';
+    n.appendChild(goto);
 
     const body = document.createElement('div');
     body.className = 'jp-CellLayout-inputBody';
@@ -275,6 +309,37 @@ export class SummaryInputCell extends Widget {
     });
     btn.addEventListener('pointerdown', e => e.stopPropagation());
     host.appendChild(btn);
+    this._runButton = btn;
+    // Subscribe once per widget instance: when the cell's executionState
+    // changes (idle ↔ busy), reflect it on the Run button — visible while
+    // busy regardless of hover, disabled to suppress double-runs, and
+    // animated so the user knows something's happening.
+    if (!this._stateChangedDispose && this.cellModel.type === 'code') {
+      const codeModel = this.cellModel as ICodeCellModel;
+      const handler = (): void => this._updateRunButtonBusyState();
+      codeModel.stateChanged.connect(handler);
+      this._stateChangedDispose = (): void => {
+        codeModel.stateChanged.disconnect(handler);
+      };
+    }
+    this._updateRunButtonBusyState();
+  }
+
+  private _updateRunButtonBusyState(): void {
+    if (!this._runButton || this.cellModel.type !== 'code') {
+      return;
+    }
+    const codeModel = this.cellModel as ICodeCellModel;
+    const busy = codeModel.executionState === 'running';
+    this._runButton.classList.toggle(
+      'jp-CellLayout-runButton--busy',
+      busy
+    );
+    this._runButton.disabled = busy;
+    this._runButton.textContent = busy ? '◐' : '▶';
+    this._runButton.title = busy
+      ? 'Cell is running…'
+      : 'Run cell (Shift+Enter inside the editor also works)';
   }
 
   /**
@@ -302,6 +367,28 @@ export class SummaryInputCell extends Widget {
     });
     wrapper.addClass('jp-CellLayout-inputEditor');
     body.appendChild(wrapper.node);
+    // Shift+Enter / Cmd+Enter / Ctrl+Enter inside the editor runs the cell,
+    // matching JL's main-editor expectation. Capture phase so we intercept
+    // before CodeMirror's own keymap inserts a newline.
+    if (this._onRun && this.cellModel.type === 'code') {
+      const onKeyDown = (e: KeyboardEvent): void => {
+        if (e.key !== 'Enter') {
+          return;
+        }
+        if (!(e.shiftKey || e.metaKey || e.ctrlKey)) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        this._onRun?.();
+      };
+      wrapper.node.addEventListener('keydown', onKeyDown, { capture: true });
+      this._editorKeydownDispose = (): void => {
+        wrapper.node.removeEventListener('keydown', onKeyDown, {
+          capture: true
+        });
+      };
+    }
     this._editor = wrapper;
   }
 
