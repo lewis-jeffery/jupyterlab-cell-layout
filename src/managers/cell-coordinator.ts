@@ -329,10 +329,17 @@ export class CellCoordinator {
    * If any cell extends past the current canvas, bump page_count up to fit.
    * Never shrinks — page removal is user-initiated. Returns true if
    * page_count grew.
+   *
+   * Uses render-aware bottom calculation: an output slot whose cell has
+   * no items routed to it isn't rendered, so its stale metadata position
+   * (e.g. left over from before a kernel restart) shouldn't keep the
+   * canvas tall. Without this guard, deleting a trailing empty page used
+   * to silently re-grow the page count back, making the delete look
+   * like it had failed.
    */
   ensureEnoughPages(): boolean {
     const layout = this.manager.read();
-    const needed = computeRequiredPageCount(layout);
+    const needed = this._computeRequiredPageCountRenderAware();
     if (needed <= layout.settings.page_count) {
       return false;
     }
@@ -342,6 +349,52 @@ export class CellCoordinator {
     }));
     this._settingsChanged.emit();
     return true;
+  }
+
+  private _computeRequiredPageCountRenderAware(): number {
+    const layout = this.manager.read();
+    const pageHeight = pageHeightMmFor(layout.settings);
+    let maxBottom = 0;
+    for (const entry of this.list()) {
+      if (entry.layout.mode !== 'summary') {
+        continue;
+      }
+      const input = entry.layout.input;
+      maxBottom = Math.max(
+        maxBottom,
+        input.position.y + input.size.height
+      );
+      if (entry.cellModel.type !== 'code') {
+        continue;
+      }
+      const codeCell = entry.cellModel as ICodeCellModel;
+      if (codeCell.outputs.length === 0) {
+        continue;
+      }
+      const items: nbformat.IOutput[] = [];
+      for (let i = 0; i < codeCell.outputs.length; i++) {
+        items.push(codeCell.outputs.get(i).toJSON() as nbformat.IOutput);
+      }
+      const routed = new OutputProcessor().route(items);
+      for (const o of entry.layout.outputs) {
+        if (!o.enabled) {
+          continue;
+        }
+        const slotItems =
+          o.output_id === 'output_a' ? routed.output_a : routed.output_b;
+        if (slotItems.length === 0) {
+          continue;
+        }
+        maxBottom = Math.max(maxBottom, o.position.y + o.size.height);
+      }
+    }
+    if (maxBottom <= 0) {
+      return Math.max(1, layout.settings.page_count);
+    }
+    const needed = Math.ceil(
+      (maxBottom + AUTO_GROW_BOTTOM_MARGIN_MM) / pageHeight
+    );
+    return Math.max(1, Math.min(MAX_PAGE_COUNT, needed));
   }
 
   /**
