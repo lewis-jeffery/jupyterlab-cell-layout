@@ -8,12 +8,15 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Framework :: Jupyter",
     "Framework :: Jupyter :: JupyterLab",
     "Framework :: Jupyter :: JupyterLab :: 4",
     "Framework :: Jupyter :: JupyterLab :: Extensions",
     "Framework :: Jupyter :: JupyterLab :: Extensions :: Prebuilt",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
@@ -21,10 +24,14 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
 ]
 dependencies = [
 ]
 dynamic = ["version", "description", "authors", "urls", "keywords"]
+
+[project.optional-dependencies]
+excel = ["xlwings>=0.30"]
 
 [tool.hatch.version]
 source = "nodejs"
