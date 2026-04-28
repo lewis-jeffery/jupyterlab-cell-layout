@@ -17,10 +17,30 @@ export interface ISnapHandler {
   showGuides(guides: IGuideLine[]): void;
 }
 
+/**
+ * One sibling DOM node that should follow the primary by the same delta
+ * during a drag. Used for group-drag (a "linked" cell where input + outputs
+ * move as one).
+ */
+export interface IDragSibling {
+  node: HTMLElement;
+  /** Read the sibling's current position at drag start (in mm). */
+  getInitialMm: () => IPosition;
+  /** Persist the sibling's final position on pointerup. */
+  onPositionChange: (pos: IPosition) => void;
+}
+
 export interface IDragOptions {
   getGridSnapMm?: () => number;
   onInteract?: () => void;
   snapHandler?: ISnapHandler;
+  /**
+   * Optional callback returning sibling nodes that should follow the
+   * dragged primary by the same delta. Evaluated on each pointerdown so
+   * the membership can change between drags (e.g. group-drag mode toggled
+   * by a double-click).
+   */
+  getSiblings?: () => IDragSibling[];
 }
 
 function roundMm(v: number): number {
@@ -38,6 +58,8 @@ export function enableDrag(
   let startMm: IPosition = { x: 0, y: 0 };
   let dragging = false;
   let activePointerId: number | null = null;
+  // Active sibling tracking — populated on each drag start, drained on end.
+  let activeSiblings: Array<IDragSibling & { startMm: IPosition }> = [];
 
   const onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0) {
@@ -86,6 +108,15 @@ export function enableDrag(
     startClientX = e.clientX;
     startClientY = e.clientY;
     startMm = { ...getInitialPositionMm() };
+    // Capture sibling start positions for group drag. Their DOM is
+    // mutated live during pointermove and persisted on pointerup.
+    activeSiblings = (options.getSiblings?.() ?? []).map(s => ({
+      ...s,
+      startMm: { ...s.getInitialMm() }
+    }));
+    for (const s of activeSiblings) {
+      s.node.classList.add('jp-CellLayout-dragging');
+    }
     try {
       node.setPointerCapture(e.pointerId);
     } catch {
@@ -146,6 +177,16 @@ export function enableDrag(
     node.style.left = `${mmToPx(pos.x)}px`;
     node.style.top = `${mmToPx(pos.y)}px`;
     options.snapHandler?.showGuides(guides);
+    // Move siblings by the same (post-snap) delta. Snap operates on the
+    // primary; siblings just follow.
+    const dx = pos.x - startMm.x;
+    const dy = pos.y - startMm.y;
+    for (const s of activeSiblings) {
+      const sx = s.startMm.x + dx;
+      const sy = s.startMm.y + dy;
+      s.node.style.left = `${mmToPx(sx)}px`;
+      s.node.style.top = `${mmToPx(sy)}px`;
+    }
   };
 
   const endDrag = (e: PointerEvent) => {
@@ -165,6 +206,20 @@ export function enableDrag(
     activePointerId = null;
     options.snapHandler?.showGuides([]);
     onPositionChange(rounded);
+    // Persist sibling positions using the same final delta (post-snap,
+    // post-clamp). Each sibling's onPositionChange is the equivalent of
+    // its own drag-end callback.
+    const dx = pos.x - startMm.x;
+    const dy = pos.y - startMm.y;
+    for (const s of activeSiblings) {
+      s.node.classList.remove('jp-CellLayout-dragging');
+      const finalPos: IPosition = {
+        x: roundMm(s.startMm.x + dx),
+        y: roundMm(s.startMm.y + dy)
+      };
+      s.onPositionChange(finalPos);
+    }
+    activeSiblings = [];
   };
 
   // Capture phase for pointerdown so the cell-level handler runs before any

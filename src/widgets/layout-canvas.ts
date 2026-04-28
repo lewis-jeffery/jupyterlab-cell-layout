@@ -34,6 +34,10 @@ export class LayoutCanvas extends Widget {
   private _currentPageSize: PageSize = 'A4';
   private _currentOrientation: PageOrientation = 'portrait';
   private _activeCellId: string | null = null;
+  // Group-drag link state: when set to a cellId, dragging any of its slots
+  // moves all slots together. Set on double-click; cleared by Esc, single
+  // click on a different cell, or click on empty page.
+  private _linkedCellId: string | null = null;
   // Cleanup hooks for per-cell `outputs.changed` subscriptions; refilled
   // every refresh, drained in `_clearCells` (and via clearAll on dispose).
   private _outputDisconnects: Array<() => void> = [];
@@ -159,30 +163,67 @@ export class LayoutCanvas extends Widget {
    */
   private _wirePinHandling(): void {
     const onKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && this._activeCellId) {
-        this._activeCellId = null;
-        this._updatePinHighlight();
+      if (e.key === 'Escape') {
+        let changed = false;
+        if (this._linkedCellId) {
+          this._linkedCellId = null;
+          changed = true;
+        }
+        if (this._activeCellId) {
+          this._activeCellId = null;
+          changed = true;
+        }
+        if (changed) {
+          this._updatePinHighlight();
+        }
       }
     };
     const onPointerDown = (e: PointerEvent): void => {
-      if (!this._activeCellId) {
+      if (!this._activeCellId && !this._linkedCellId) {
         return;
       }
       const target = e.target as HTMLElement | null;
-      // Click landed on a slot — interact will set a new pin.
+      // Click landed on a slot — interact will set a new pin (and may
+      // clear the link below if it's a different cell).
       if (target?.closest?.('.jp-CellLayout-input, .jp-CellLayout-output')) {
         return;
       }
-      // Click on empty page area — drop the pin.
+      // Click on empty page area — drop both pin and link.
       this._activeCellId = null;
+      this._linkedCellId = null;
+      this._updatePinHighlight();
+    };
+    const onDblClick = (e: MouseEvent): void => {
+      const target = e.target as HTMLElement | null;
+      const slot = target?.closest?.(
+        '.jp-CellLayout-input, .jp-CellLayout-output'
+      ) as HTMLElement | null;
+      if (!slot) {
+        return;
+      }
+      const cellId = slot.dataset.cellId;
+      if (!cellId) {
+        return;
+      }
+      // Toggle: double-clicking a cell that's already linked clears it.
+      this._linkedCellId =
+        this._linkedCellId === cellId ? null : cellId;
       this._updatePinHighlight();
     };
     this.node.addEventListener('keydown', onKeyDown);
     this._page.addEventListener('pointerdown', onPointerDown);
+    this._page.addEventListener('dblclick', onDblClick);
     this._pinDispose = () => {
       this.node.removeEventListener('keydown', onKeyDown);
       this._page.removeEventListener('pointerdown', onPointerDown);
+      this._page.removeEventListener('dblclick', onDblClick);
     };
+  }
+
+  /** Returns true if `cellId` is the currently group-linked cell. Used by
+   *  per-slot drag wiring to decide whether to attach sibling nodes. */
+  isCellLinked(cellId: string): boolean {
+    return this._linkedCellId === cellId;
   }
 
   /**
@@ -230,15 +271,20 @@ export class LayoutCanvas extends Widget {
 
   private _updatePinHighlight(): void {
     const PIN = 'jp-CellLayout-cellGroupPinned';
+    const LINK = 'jp-CellLayout-cellGroupLinked';
     this._page
-      .querySelectorAll(`.${PIN}`)
-      .forEach(el => el.classList.remove(PIN));
-    if (!this._activeCellId) {
-      return;
+      .querySelectorAll(`.${PIN}, .${LINK}`)
+      .forEach(el => el.classList.remove(PIN, LINK));
+    if (this._activeCellId) {
+      this._page
+        .querySelectorAll(`[data-cell-id="${this._activeCellId}"]`)
+        .forEach(el => el.classList.add(PIN));
     }
-    this._page
-      .querySelectorAll(`[data-cell-id="${this._activeCellId}"]`)
-      .forEach(el => el.classList.add(PIN));
+    if (this._linkedCellId) {
+      this._page
+        .querySelectorAll(`[data-cell-id="${this._linkedCellId}"]`)
+        .forEach(el => el.classList.add(LINK));
+    }
   }
 
   /**
@@ -320,7 +366,8 @@ export class LayoutCanvas extends Widget {
         editorServices: this.editorServices,
         onRunCell: this.runCellById,
         onInteract: () => this.bringCellToFront(cellId),
-        snapHandlerFactory: (id, slot) => this._snapHandlerFor(id, slot)
+        snapHandlerFactory: (id, slot) => this._snapHandlerFor(id, slot),
+        isCellLinked: id => this.isCellLinked(id)
       });
       this._cells.push(widget);
       this._groups.set(cellId, widget);
@@ -388,7 +435,15 @@ export class LayoutCanvas extends Widget {
 
   private _snapHandlerFor(cellId: string, slot: SlotKey): ISnapHandler | null {
     const excludeKey = `${cellId}:${slot}`;
-    const collect = (): IRect[] => this._collectSnapRects(excludeKey);
+    // When a cell is linked for group drag every sibling moves with the
+    // primary; if we left them in the snap-target set, snap distances
+    // would be locked at drag start (siblings move with primary so the
+    // distance never changes) and would either fire instantly or never.
+    // Exclude the whole cellId in that case.
+    const collect = (): IRect[] =>
+      this.isCellLinked(cellId)
+        ? this._collectSnapRects(excludeKey, cellId)
+        : this._collectSnapRects(excludeKey);
     const getPageBox = (): IPageBox => this._pageBox();
     return {
       computeDrag: (rect: IRect) =>
@@ -427,7 +482,10 @@ export class LayoutCanvas extends Widget {
     };
   }
 
-  private _collectSnapRects(excludeKey: string): IRect[] {
+  private _collectSnapRects(
+    excludeKey: string,
+    excludeCellId?: string
+  ): IRect[] {
     const rects: IRect[] = [];
     const nodes = this._page.querySelectorAll(
       '.jp-CellLayout-input, .jp-CellLayout-output'
@@ -438,6 +496,9 @@ export class LayoutCanvas extends Widget {
       const slot = el.dataset.slot ?? '';
       const key = `${cellId}:${slot}`;
       if (key === excludeKey || cellId === '' || slot === '') {
+        continue;
+      }
+      if (excludeCellId && cellId === excludeCellId) {
         continue;
       }
       rects.push({
@@ -497,6 +558,12 @@ export class LayoutCanvas extends Widget {
   }
 
   bringCellToFront(cellId: string): void {
+    // Single-click on a different cell drops any group-link from the
+    // previous cell — link must be re-established with another double
+    // click on the new cell if the user wants group drag there.
+    if (this._linkedCellId && this._linkedCellId !== cellId) {
+      this._linkedCellId = null;
+    }
     this._activeCellId = cellId;
     this._updatePinHighlight();
     const group = this._groups.get(cellId);

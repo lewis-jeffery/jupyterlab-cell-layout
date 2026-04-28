@@ -10,6 +10,7 @@ import type { IInputLayout, IPosition, ISize } from '../managers/metadata';
 import {
   enableDrag,
   type IDragController,
+  type IDragSibling,
   type ISnapHandler
 } from './draggable';
 import { enableResize, type IResizeController } from './resizable';
@@ -46,6 +47,7 @@ export interface IInputLayoutCallbacks {
   onInteract?: () => void;
   onAutoFit?: (size: ISize) => void;
   snapHandler?: ISnapHandler;
+  getSiblings?: () => IDragSibling[];
 }
 
 export interface IInputCellOptions {
@@ -127,7 +129,8 @@ export class SummaryInputCell extends Widget {
         {
           getGridSnapMm: callbacks.getGridSnapMm,
           onInteract: callbacks.onInteract,
-          snapHandler: callbacks.snapHandler
+          snapHandler: callbacks.snapHandler,
+          getSiblings: callbacks.getSiblings
         }
       );
       this._resizeCtl = enableResize(
@@ -168,6 +171,16 @@ export class SummaryInputCell extends Widget {
     this._editor?.dispose();
     this._editor = undefined;
     super.dispose();
+  }
+
+  /**
+   * Update internal layout state and DOM in one call. Used by group drag
+   * to keep this cell's state in sync with on-canvas mutations performed
+   * by another slot's drag controller.
+   */
+  commitPosition(pos: IPosition): void {
+    this._inputLayout = { ...this._inputLayout, position: pos };
+    this._applyLayout();
   }
 
   setLayout(next: IInputLayout): void {

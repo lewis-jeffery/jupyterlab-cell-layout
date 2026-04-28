@@ -17,6 +17,7 @@ import type {
 import {
   enableDrag,
   type IDragController,
+  type IDragSibling,
   type ISnapHandler
 } from './draggable';
 import { enableResize, type IResizeController } from './resizable';
@@ -28,6 +29,7 @@ export interface IExcelCellCallbacks {
   getGridSnapMm?: () => number;
   onInteract?: () => void;
   snapHandler?: ISnapHandler;
+  getSiblings?: () => IDragSibling[];
 }
 
 export interface IExcelCellOptions {
@@ -75,7 +77,8 @@ export class SummaryExcelCell extends Widget {
         {
           getGridSnapMm: callbacks.getGridSnapMm,
           onInteract: callbacks.onInteract,
-          snapHandler: callbacks.snapHandler
+          snapHandler: callbacks.snapHandler,
+          getSiblings: callbacks.getSiblings
         }
       );
       this._resizeCtl = enableResize(
@@ -104,6 +107,16 @@ export class SummaryExcelCell extends Widget {
   setZIndex(z: number): void {
     this._inputLayout = { ...this._inputLayout, z_index: z };
     this.node.style.zIndex = String(z);
+  }
+
+  /**
+   * Update internal layout state and DOM in one call. Used by group drag
+   * to keep this cell's state in sync with on-canvas mutations performed
+   * by another slot's drag controller.
+   */
+  commitPosition(pos: IPosition): void {
+    this._inputLayout = { ...this._inputLayout, position: pos };
+    this._applyLayout();
   }
 
   dispose(): void {
