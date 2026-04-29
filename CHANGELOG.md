@@ -2,6 +2,13 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## 1.2.0 — 2026-04-30
+
+PDF cover sheet with optional table of contents, plus multi-cell selection and group operations.
+
+- **Cover sheet.** New command `Cell Layout: Export to PDF with cover sheet…` opens a dialog (title / author / date / include-ToC checkbox) and prepends a vector-text title page to the PDF. When the ToC is enabled, every markdown heading gets one row — indented by level, dotted leader, right-aligned page number — and clicking a row in the PDF jumps to the heading's content page via a real internal link annotation. Continuation pages are added automatically when entries overflow. Last-used author persists across sessions via JL settings. The toolbar Export PDF button is unchanged (quick path, no dialog).
+- **Multi-cell selection + group ops.** Shift-click slots to extend the selection. Drag on empty canvas to lasso cells with a marquee; shift+drag adds. Drag any selected slot → every selected cell moves together (snap targets exclude the whole selection so distances aren't locked at start). Bulk keyboard shortcuts: `Delete` / `Backspace` removes the selection from the canvas; `Cmd/Ctrl+]` brings selection to front; `Cmd/Ctrl+[` sends to back, preserving relative z-order in both. Esc clears. The old F5 pin is folded into selection (selection-of-1 looks identical to today's pinned highlight); F7 link (double-click) stays as the parallel single-cell quick-group.
+
 ## 1.1.0 — 2026-04-30
 
 Heading-based table of contents in summary mode, plus a one-line PDF export fix that shrinks plot-heavy exports by ~100×.
