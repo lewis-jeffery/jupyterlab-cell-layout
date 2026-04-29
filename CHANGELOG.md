@@ -2,6 +2,15 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## 1.1.0 — 2026-04-30
+
+Heading-based table of contents in summary mode, plus a one-line PDF export fix that shrinks plot-heavy exports by ~100×.
+
+- **Contents sidebar.** Summary mode gains a left-side ToC listing every markdown ATX heading on the canvas, indented by level (H1–H6) — same shape as JL's built-in ToC. Headings appear in PDF reading order. Click an entry to smooth-scroll to the cell that contains it. Editing a heading in summary mode live-updates the list. Toggle on/off with the new "Contents" toolbar button or `Cell Layout: Toggle contents sidebar` from the command palette.
+- **PDF export now uses JPEG instead of PNG** for the per-page bitmap. Lossless PNG was producing exports up to 100× larger than they needed to be on plot-heavy notebooks (one user reported a 200 MB export drop to 2 MB after the change). JPEG quality 0.85 is the standard photographic sweet spot; the invisible-text overlay is what users search and select against, so any glyph ringing in the bitmap is harmless.
+
+A vector-PDF rewrite was investigated and dropped — file size on plot-heavy notebooks is dominated by image pixels, not text glyphs, so the rewrite would have delivered a small benefit at high engineering cost. Bitmap + invisible-text overlay + JPEG remains the export pipeline.
+
 ## 1.0.0 — 2026-04-29
 
 First stable release. Consolidates the v0.x line — page-oriented summary view, drag/resize, multi-page canvas, searchable PDF export with link annotations, editable summary mode, smart alignment guides, and the Mac-beta Excel range view — into a release suitable for general use.

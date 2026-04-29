@@ -1,15 +1,27 @@
 # JupyterLab Cell Layout — Task List
 
-_Last updated: 2026-04-29 (v1.0.0 prep done on `feat/v1-polish`; awaiting merge to main)_
+_Last updated: 2026-04-30 (post-v1.0.0; ToC shipped, vector PDF dropped, JPEG fix shipped, T2 cover sheet next. Excel backlog closed.)_
 
-Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · ⏸ deferred
+Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · ⏸ deferred · ❌ won't-do
 
 ## 🎯 Phase status
 
 - **Phase 1** ✅ fully delivered (core infrastructure)
 - **Phase 2** ✅ fully delivered (drag, resize, z-index, grid snap)
-- **Phase 3** ✅ delivered (multi-page canvas + searchable PDF export + clickable markdown links). Optional sub-tasks (#26 cover sheet, #27 ToC sidebar) deferred.
-- **Phase 4** 🔒 not started
+- **Phase 3** ✅ delivered (multi-page canvas + searchable PDF export + clickable markdown links). #26 cover sheet and #27 ToC sidebar moved into the active track below.
+- **Phase 4** 🟢 in progress — see "Active track" below.
+
+## 🟢 Active track (post-v1.0.0)
+
+Two threads run in this order: PDF cover sheet → Phase 4 polish (multi-select / templates / keyboard nav). Polish items interleave.
+
+- **T1** ✅ Summary-mode ToC sidebar (#27) — **heading-based, JL-style**. One entry per markdown ATX heading (H1–H6); indented by level; right-aligned page number hint. Headings ordered by PDF reading order (page bucket → row-major within page → x within a row). CommonMark-style: no space after `#` is not a heading; 7+ hashes is not a heading; fenced-code-block contents skipped. Click → smooth-scroll the cell containing the heading to near the top of the canvas viewport. Empty state: "No headings on the canvas. Add a markdown cell with `# Title`...". Toggle via toolbar button "Contents / No contents" (session-scoped) or command palette _Cell Layout: Toggle contents sidebar_. Implementation: `src/widgets/toc-sidebar.ts` (pure DOM widget + `buildTocHeadings` pure function with 13 Jest tests); `LayoutCanvas` mounts/unmounts the sidebar; refresh on (a) full canvas refresh, (b) `coordinator.layoutChanged` (drag/resize repositions cells across pages), (c) per-cell `sharedModel.changed` debounced at 300 ms (typing into a markdown cell live-updates the ToC). Sidebar hidden in PDF export — html2canvas captures only `.jp-CellLayout-page`, the sidebar sits as a sibling.
+- **V1/V2/V3** ❌ Vector PDF — **dropped 2026-04-30 after user-side spike comparison**. Spike (`pdf-export-vector.ts`, since deleted) used html2canvas `onclone` to suppress glyphs in the bitmap and emitted `pdf.text()` per DOM element. On the user's plot-heavy 17-page notebook, file size **did not shrink** (bitmap was already dominated by plot images, not text) and per-element chunk-splitting produced **scattered text** (would need per-text-node `Range` + character-offset math to fix properly). Verdict: not worth the engineering effort given the file-size win doesn't materialise on real workloads. Bitmap + invisible-text overlay stays as the export pipeline. Spike code removed.
+- **JPEG fix** ✅ shipped 2026-04-30 (was the right answer to the 200 MB problem). `src/exporters/pdf-export.ts`: `image/png` → `image/jpeg` at quality 0.85. Plot-heavy notebooks should shrink ~10–20×. Sharp-text edges may show very mild ringing; the invisible-text overlay is what users search/select so readability is unaffected.
+- **T2** ⬜ PDF cover sheet (#26): title / author / date / include-ToC checkbox; inserts as PDF page 0; ToC entries link to target pages via jsPDF internal links. Persists last-used author into settings. Rides on the bitmap pipeline.
+- **P1** ⬜ Multi-cell selection + group ops (was #41): shift-click + drag-marquee; group drag/delete/raise/lower. Reuses F7 cell-link plumbing.
+- **P2** ⬜ Layout templates: save layout to `.cell-layout-template.json` (settings + per-cell-by-index); apply via file picker; ship 2–3 starter templates.
+- **P3** ⬜ Keyboard navigation parity: Tab/Shift+Tab through reading order; arrow nudge 1 mm (5 mm with Shift); Delete removes from canvas; Esc clears.
 
 ## ✅ Completed
 
@@ -37,7 +49,7 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 
 ## 🟢 In progress
 
-**v1.0.0 release prep (`feat/v1-polish` at `9406eac` + metadata update):** ⬜ branch ready to merge to `main` and tag `v1.0.0`. Awaiting user instruction to commit metadata changes (package.json, pyproject.toml, README, CHANGELOG) and push.
+**v1.0.0 shipped 2026-04-29:** `main` at `fafe58b`, tagged `v1.0.0`, pushed.
 
 **Editable summary view — code-cell-driven workflow:** #42 ✅ Shipped in v0.5.0 (stages A–D) and refined in `feat/v1-polish` (stages F1–F7).
 
@@ -54,32 +66,21 @@ Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · �
 - **F6** ✅ Per-pinned-slot "→" go-to-next-related-slot button.
 - **F7** ✅ Double-click to link a cell for group drag.
 
-**Excel range view — shipped in v0.4.0 (`main` at `08e8d8b`):** #31 — read-only mirror of an open Excel named range via xlwings, with live sync (~1 s) and per-cell horizontal alignment passthrough. Mac-only for now; Windows COM is a Phase 5 prerequisite for any PyPI publish.
+**Excel range view — shipped in v0.4.0:** #31 — read-only mirror of an open Excel named range via xlwings, with live sync (~1 s) and per-cell horizontal alignment passthrough. **Mac-only.** Editable-summary work (#42) supersedes the Excel-data path for the primary use case; remaining Excel backlog closed (see ❌ won't-do).
 
-⏳ **Excel — future phases:**
-- **#32** ⏸ Phase 2 (editable sub-ranges) — **dropped**: real-use surfaced that Excel itself is awkward in this workflow. The editable-summary work (#42) supersedes the Excel-data path for the user's primary use case. Excel link remains available for genuinely-Excel-source-of-truth scenarios.
-- **#33** ✅ Phase 3 (live sync via 1 s poll + diff push): persistent comm, kernel daemon polling thread, `subscribe` / `unsubscribe` / `read` message types, polling pauses while user code executes.
-- **#34** 🟡 Phase 4 (formatting passthrough): **alignment shipped on Mac**. Bold / italic / font colour / fill colour are out of scope on Mac because Excel for Mac's AppleScript bridge returns the `k.missing_value` sentinel for `font.bold` / `font.color` (even per-cell) and doesn't expose a working `interior` property at all. The `formats` payload structure is in place — the Windows code path (#35) can populate the omitted fields without a frontend change. A possible Mac fallback is to read the saved `.xlsx` via `openpyxl` and watch the file mtime for changes; not implemented (means user must save in Excel before formatting changes propagate). Number formats and merged cells also deferred.
-- **#35** ⬜ Phase 5: robustness (Excel-not-running affordance, debounced concurrent edits, **Windows COM `pythoncom.CoInitialize()` per polling thread — required before any PyPI publish**, and the `bold` / `italic` / `fg` / `bg` properties land here on Windows because COM exposes them properly).
-- **#41** ⬜ Multi-cell select + move (drag-marquee, shift-click; "select all above/below active cell" command). Phase 4 item.
+## ❌ Won't-do (closed 2026-04-30)
 
-## ⏸ Deferred
+The Excel backlog is closed because the editable-summary workflow (#42) now covers the user's primary use case better than an Excel-as-source-of-truth model. The shipped Excel range view (#31, v0.4.0) remains in the codebase for genuinely-Excel-source scenarios; no further phases are planned.
 
-- **#26** PDF cover sheet (title, author, date, optional ToC) — useful for large/formal documents; revisit when needed.
-- **#27** Summary-mode ToC sidebar — depends on #26.
+- **#32** ❌ Phase 2 — Excel editable sub-ranges.
+- **#33** Already shipped (kept above for completeness).
+- **#34** ❌ Phase 4 — formatting passthrough beyond alignment.
+- **#35** ❌ Phase 5 — Excel robustness, including the Windows COM `CoInitialize` fix that was previously gating PyPI publish. **PyPI gating is now just "is it ready?" rather than waiting on Windows Excel.**
+- **#41** moved to **P1** in the active track above.
 
 ## 🔒 Blocked
 
-- **#15** Phase 4: Advanced features (templates, bulk ops, advanced keyboard) — not blocked technically, just deferred until usage surfaces priority.
-
-## Phase 4 — when there's appetite
-
-The spec's Phase 4 list, with current relevance noted:
-
-- **Layout templates** — save / apply layouts across notebooks. High value if user produces many similar reports.
-- **Bulk operations** — drag-select multiple cells, move/resize/delete together. Becomes important once notebooks have ~10+ cells per page.
-- **Keyboard navigation parity** — Tab/Shift-Tab to cycle, arrow keys to nudge, etc.
-- **Already done in earlier phases:** grid snapping (#19), page-count controls.
+- **#15** Phase 4 (templates / bulk ops / keyboard) — superseded by the active P1/P2/P3 tasks above.
 
 ## Notable design decisions (full details in Claude's memory; see `CLAUDE.md` for spec)
 
