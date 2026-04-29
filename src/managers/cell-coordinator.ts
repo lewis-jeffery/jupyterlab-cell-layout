@@ -247,6 +247,7 @@ export interface ICellEntry {
 export class CellCoordinator {
   private readonly _changed = new Signal<this, void>(this);
   private readonly _settingsChanged = new Signal<this, void>(this);
+  private readonly _layoutChanged = new Signal<this, void>(this);
   private _disposed = false;
 
   constructor(
@@ -267,6 +268,16 @@ export class CellCoordinator {
    */
   get settingsChanged(): ISignal<this, void> {
     return this._settingsChanged;
+  }
+
+  /**
+   * Emitted after `persistLayout` writes a single cell's position / size /
+   * z-index. `changed` only fires on add/remove/reorder, so listeners that
+   * care about cells moving (e.g. the ToC sidebar, which buckets cells by
+   * page) need this finer-grained signal.
+   */
+  get layoutChanged(): ISignal<this, void> {
+    return this._layoutChanged;
   }
 
   dispose(): void {
@@ -323,6 +334,7 @@ export class CellCoordinator {
   persistLayout(cellId: string, layout: ICellLayout): void {
     this.manager.setCell(cellId, layout);
     this.ensureEnoughPages();
+    this._layoutChanged.emit();
   }
 
   /**

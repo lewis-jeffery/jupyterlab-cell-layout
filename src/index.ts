@@ -35,6 +35,7 @@ const COMMAND_TOGGLE_ORIENTATION =
   'jupyterlab-cell-layout:toggle-orientation';
 const COMMAND_TOGGLE_CELL_INCLUSION =
   'jupyterlab-cell-layout:toggle-cell-inclusion';
+const COMMAND_TOGGLE_TOC = 'jupyterlab-cell-layout:toggle-toc';
 const COMMAND_ADD_PAGE = 'jupyterlab-cell-layout:add-page';
 const COMMAND_REMOVE_PAGE = 'jupyterlab-cell-layout:remove-page';
 const COMMAND_EXPORT_PDF = 'jupyterlab-cell-layout:export-pdf';
@@ -66,6 +67,12 @@ const userDefaults: IUserDefaults = {
   smartGuides: true
 };
 
+// Session-scoped: the on-screen ToC is shown/hidden via the toolbar
+// "Contents" button. Not part of the settings schema — the in/out for the
+// PDF cover sheet's printed ToC is the only "should there be a ToC?"
+// decision worth persisting, and that belongs to the cover-sheet dialog.
+let sessionTocOpen = false;
+
 // Captured at plugin activation; used by `attachNotebook` to pass through to
 // LayoutCanvas → SummaryInputCell so summary-mode code cells can render via
 // JL's CodeMirror editor.
@@ -80,6 +87,7 @@ interface INotebookState {
   orientationButton: ToolbarButton;
   pageCountButton: ToolbarButton;
   exportButton: ToolbarButton;
+  tocButton: ToolbarButton;
 }
 
 const state = new WeakMap<NotebookPanel, INotebookState>();
@@ -314,6 +322,7 @@ async function exportCurrentNotebookToPdf(panel: NotebookPanel): Promise<void> {
     }
   }
 }
+
 
 class ExcelLinkPrompt extends Widget {
   private readonly _workbook: HTMLInputElement;
@@ -568,6 +577,27 @@ function updatePageCountButtonLabel(
   }
 }
 
+function updateTocButtonLabel(button: ToolbarButton, on: boolean): void {
+  const labelEl = button.node.querySelector('.jp-ToolbarButtonComponent-label');
+  if (labelEl) {
+    labelEl.textContent = on ? 'Contents' : 'No contents';
+  }
+}
+
+function applyTocVisibility(panel: NotebookPanel, visible: boolean): void {
+  const s = state.get(panel);
+  if (!s) {
+    return;
+  }
+  s.canvas.setTocVisible(visible);
+  updateTocButtonLabel(s.tocButton, visible);
+}
+
+function toggleToc(panel: NotebookPanel): void {
+  sessionTocOpen = !sessionTocOpen;
+  applyTocVisibility(panel, sessionTocOpen);
+}
+
 function toggleOrientation(panel: NotebookPanel): void {
   const s = state.get(panel);
   if (!s) {
@@ -674,6 +704,15 @@ function attachNotebook(panel: NotebookPanel): void {
     exportButton.addClass('jp-CellLayout-tbItem');
     panel.toolbar.insertItem(13, 'cellLayoutExportPdf', exportButton);
 
+    const tocButton = new ToolbarButton({
+      label: sessionTocOpen ? 'Contents' : 'No contents',
+      tooltip:
+        'Toggle the contents sidebar in summary mode (one entry per markdown heading)',
+      onClick: () => toggleToc(panel)
+    });
+    tocButton.addClass('jp-CellLayout-tbItem');
+    panel.toolbar.insertItem(14, 'cellLayoutToc', tocButton);
+
     state.set(panel, {
       manager,
       coordinator,
@@ -682,10 +721,12 @@ function attachNotebook(panel: NotebookPanel): void {
       modeButton,
       orientationButton,
       pageCountButton,
-      exportButton
+      exportButton,
+      tocButton
     });
 
     applyMode(panel, isSummaryMode(manager));
+    applyTocVisibility(panel, sessionTocOpen);
     refreshCellAffordances(panel);
 
     coordinator.changed.connect(() => refreshCellAffordances(panel));
@@ -707,6 +748,7 @@ function attachNotebook(panel: NotebookPanel): void {
         orientationButton.dispose();
         pageCountButton.dispose();
         exportButton.dispose();
+        tocButton.dispose();
         state.delete(panel);
       });
     })
@@ -816,6 +858,17 @@ const plugin: JupyterFrontEndPlugin<void> = {
         notebooks.currentWidget.content.activeCell !== null
     });
 
+    app.commands.addCommand(COMMAND_TOGGLE_TOC, {
+      label: 'Cell Layout: Toggle contents sidebar',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          toggleToc(panel);
+        }
+      },
+      isEnabled: () => notebooks.currentWidget !== null
+    });
+
     app.commands.addCommand(COMMAND_INSERT_PAGE_ABOVE, {
       label: 'Cell Layout: Insert page above (right-clicked page)',
       execute: () => {
@@ -918,6 +971,7 @@ const plugin: JupyterFrontEndPlugin<void> = {
       for (const command of [
         COMMAND_TOGGLE_MODE,
         COMMAND_TOGGLE_ORIENTATION,
+        COMMAND_TOGGLE_TOC,
         COMMAND_ADD_PAGE,
         COMMAND_REMOVE_PAGE,
         COMMAND_EXPORT_PDF,

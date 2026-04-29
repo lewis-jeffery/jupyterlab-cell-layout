@@ -6,6 +6,15 @@
 
 .jp-CellLayout-root {
   background: var(--jp-layout-color2, #f4f4f4);
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+/* The page keeps its margin: 0 auto for horizontal centring within whatever
+ * row space is left after the optional ToC sidebar takes its share. */
+.jp-CellLayout-root > .jp-CellLayout-page {
+  flex: 0 0 auto;
 }
 
 /* Add a little space between the extension's own toolbar buttons so they
@@ -707,4 +716,124 @@
 .jp-CellLayout-includeToggle--excluded {
   opacity: 0.95;
   color: var(--jp-warn-color1, #d9534f);
+}
+
+/* Summary-mode contents sidebar. Sticks to the top-left of the scroll area
+ * so the page (margin: 0 auto) stays centred and the sidebar overlays the
+ * empty space at wide viewports. Toggled on/off via the toolbar button. */
+.jp-CellLayout-toc {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  width: 220px;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  margin-right: 16px;
+  padding: 8px 6px 8px 8px;
+  background: var(--jp-layout-color1, #fff);
+  border: 1px solid var(--jp-border-color2, #ddd);
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  font-family: var(--jp-ui-font-family, system-ui, sans-serif);
+  font-size: 12px;
+  z-index: 60;
+}
+
+.jp-CellLayout-tocHeader {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--jp-ui-font-color2, #555);
+  font-size: 10px;
+  padding: 2px 4px 6px;
+  border-bottom: 1px solid var(--jp-border-color3, #eee);
+  margin-bottom: 4px;
+}
+
+.jp-CellLayout-tocList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.jp-CellLayout-tocItem {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  color: var(--jp-ui-font-color1, #333);
+  line-height: 1.3;
+}
+
+.jp-CellLayout-tocItem:hover,
+.jp-CellLayout-tocItem:focus-visible {
+  background: var(--jp-layout-color2, #f4f4f4);
+  outline: none;
+}
+
+.jp-CellLayout-tocItemActive {
+  background: var(--jp-brand-color3, rgba(33, 150, 243, 0.12));
+  color: var(--jp-brand-color1, #1976d2);
+}
+
+/* Indent by heading level. JL's built-in ToC uses 12px/level; matching that
+ * gives a familiar feel. Larger weight at level 1 so the document spine is
+ * scannable at a glance. */
+.jp-CellLayout-tocItem-l1 {
+  padding-left: 6px;
+  font-weight: 600;
+}
+.jp-CellLayout-tocItem-l2 {
+  padding-left: 18px;
+}
+.jp-CellLayout-tocItem-l3 {
+  padding-left: 30px;
+  color: var(--jp-ui-font-color2, #555);
+}
+.jp-CellLayout-tocItem-l4 {
+  padding-left: 42px;
+  color: var(--jp-ui-font-color2, #555);
+  font-size: 11px;
+}
+.jp-CellLayout-tocItem-l5 {
+  padding-left: 54px;
+  color: var(--jp-ui-font-color3, #777);
+  font-size: 11px;
+}
+.jp-CellLayout-tocItem-l6 {
+  padding-left: 66px;
+  color: var(--jp-ui-font-color3, #777);
+  font-size: 11px;
+}
+
+.jp-CellLayout-tocHeading {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jp-CellLayout-tocPage {
+  flex: 0 0 auto;
+  min-width: 18px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--jp-ui-font-color3, #999);
+  font-size: 10px;
+  font-weight: normal;
+}
+
+.jp-CellLayout-tocEmpty {
+  padding: 8px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--jp-ui-font-color2, #777);
+}
+
+/* Hide the sidebar in the export bitmap so it doesn't appear in the PDF. */
+.jp-CellLayout-exporting .jp-CellLayout-toc {
+  display: none;
 }

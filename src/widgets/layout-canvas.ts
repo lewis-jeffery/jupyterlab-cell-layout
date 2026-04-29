@@ -22,7 +22,12 @@ import {
 import type { ISnapHandler } from './draggable';
 import type { ResizeHandle } from './resizable';
 import { SummaryCellWidget, type SlotKey } from './summary-cell';
-import { mmToPx, pxToMm } from './units';
+import {
+  buildTocHeadings,
+  TocSidebar,
+  type ITocSourceCell
+} from './toc-sidebar';
+import { coerceText, mmToPx, pxToMm } from './units';
 
 const SNAP_MIN_SIZE = { width: 20, height: 15 };
 const PAGE_BREAK_HEIGHT_PX = 12;
@@ -31,6 +36,8 @@ export class LayoutCanvas extends Widget {
   private _cells: SummaryCellWidget[] = [];
   private _groups = new Map<string, SummaryCellWidget>();
   private _page: HTMLElement;
+  private _toc: TocSidebar;
+  private _tocVisible = false;
   private _currentPageSize: PageSize = 'A4';
   private _currentOrientation: PageOrientation = 'portrait';
   private _activeCellId: string | null = null;
@@ -38,10 +45,13 @@ export class LayoutCanvas extends Widget {
   // moves all slots together. Set on double-click; cleared by Esc, single
   // click on a different cell, or click on empty page.
   private _linkedCellId: string | null = null;
-  // Cleanup hooks for per-cell `outputs.changed` subscriptions; refilled
-  // every refresh, drained in `_clearCells` (and via clearAll on dispose).
+  // Cleanup hooks for per-cell signal subscriptions (output changes for code
+  // cells, sharedModel.changed for markdown cells so the ToC re-derives
+  // headings as the user edits). Refilled every refresh, drained in
+  // `_clearCells` (and via clearAll on dispose).
   private _outputDisconnects: Array<() => void> = [];
   private _pendingOutputRefresh: ReturnType<typeof setTimeout> | null = null;
+  private _pendingTocRefresh: ReturnType<typeof setTimeout> | null = null;
   // Cells the canvas has rendered at least once. Any cellId that's missing
   // from this set when refresh runs is "newly added" and gets lifted to
   // the top of the z-order so it's visible if it lands at a default
@@ -66,6 +76,10 @@ export class LayoutCanvas extends Widget {
     this.node.style.padding = '16px';
     this.node.style.boxSizing = 'border-box';
 
+    this._toc = new TocSidebar();
+    this._toc.setOnNavigate(cellId => this.scrollToCell(cellId));
+    // Mounted/unmounted in `setTocVisible`; not in the DOM by default.
+
     this._page = document.createElement('div');
     this._page.className = 'jp-CellLayout-page';
     this._page.style.position = 'relative';
@@ -77,6 +91,7 @@ export class LayoutCanvas extends Widget {
 
     coordinator.changed.connect(this._onCellsChanged, this);
     coordinator.settingsChanged.connect(this._onSettingsChanged, this);
+    coordinator.layoutChanged.connect(this._onLayoutChanged, this);
 
     // Prime the known-cells set so existing cells aren't all flagged as
     // "new" on the first refresh (which would lift every cell to the
@@ -331,6 +346,7 @@ export class LayoutCanvas extends Widget {
     }
     this.coordinator.changed.disconnect(this._onCellsChanged, this);
     this.coordinator.settingsChanged.disconnect(this._onSettingsChanged, this);
+    this.coordinator.layoutChanged.disconnect(this._onLayoutChanged, this);
     this._hoverLinkDispose?.();
     this._hoverLinkDispose = null;
     this._newCellDismissDispose?.();
@@ -341,6 +357,89 @@ export class LayoutCanvas extends Widget {
     this._gotoDispose = null;
     this._clearCells();
     super.dispose();
+  }
+
+  /**
+   * Show or hide the ToC sidebar. Called by the toolbar / settings handler
+   * in index.ts. Visibility is independent of summary-mode visibility so a
+   * notebook switching modes keeps the user's preference.
+   */
+  setTocVisible(visible: boolean): void {
+    if (this._tocVisible === visible) {
+      return;
+    }
+    this._tocVisible = visible;
+    if (visible) {
+      // Insert as the first child so the canvas's page (with margin: 0 auto)
+      // still reads as the main content.
+      this.node.insertBefore(this._toc.node, this.node.firstChild);
+      this._refreshToc();
+    } else {
+      this._toc.node.remove();
+    }
+  }
+
+  /**
+   * Scroll the canvas so the given cell's input slot is near the top of
+   * the viewport. Used by the ToC sidebar — clicking a heading entry
+   * navigates to the cell that contains the heading. Falls back to a
+   * no-op if the cell isn't on the current canvas.
+   */
+  scrollToCell(cellId: string): void {
+    const slot = this._page.querySelector(
+      `.jp-CellLayout-input[data-cell-id="${cellId}"]`
+    ) as HTMLElement | null;
+    if (!slot) {
+      return;
+    }
+    // Use the slot's offset within the page rather than getBoundingClientRect
+    // — getBoundingClientRect would change with current scroll, while
+    // offsetTop is a stable layout coordinate inside the page.
+    const target = Math.max(0, slot.offsetTop - 16);
+    this.node.scrollTo({ top: target, behavior: 'smooth' });
+    this._toc.setActiveCell(cellId);
+  }
+
+  private _onLayoutChanged(): void {
+    if (!this.isVisible || !this._tocVisible) {
+      return;
+    }
+    this._refreshToc();
+  }
+
+  private _refreshToc(): void {
+    if (!this._tocVisible) {
+      return;
+    }
+    const settings = this.manager.read().settings;
+    const bounds = pageBoundsFor({
+      page_size: settings.page_size,
+      orientation: settings.orientation,
+      page_count: 1,
+      grid_snap: 0,
+      default_summary_lines: 3,
+      notebook_mode: 'edit',
+      smart_guides: false
+    });
+    const sources: ITocSourceCell[] = [];
+    for (const entry of this.coordinator.list()) {
+      if (entry.layout.mode !== 'summary') {
+        continue;
+      }
+      sources.push({
+        cellId: entry.cellModel.id,
+        type: entry.layout.type,
+        source: coerceText(entry.cellModel.sharedModel.getSource()),
+        xMm: entry.layout.input.position.x,
+        yMm: entry.layout.input.position.y
+      });
+    }
+    const headings = buildTocHeadings(
+      sources,
+      bounds.height,
+      Math.max(1, Math.floor(settings.page_count))
+    );
+    this._toc.setEntries(headings);
   }
 
   refresh(): void {
@@ -388,6 +487,19 @@ export class LayoutCanvas extends Widget {
           outputs.changed.disconnect(handler)
         );
       }
+      // Markdown source changes don't affect rendered cells (those re-render
+      // through their own subscription) but the ToC walks markdown headings,
+      // so subscribe to the shared model's text changes and debounce a ToC
+      // rebuild. Skip when the ToC is invisible — handler is a cheap signal
+      // hop in that case.
+      if (entry.cellModel.type === 'markdown') {
+        const sharedModel = entry.cellModel.sharedModel;
+        const handler = (): void => this._scheduleTocRefresh();
+        sharedModel.changed.connect(handler);
+        this._outputDisconnects.push(() =>
+          sharedModel.changed.disconnect(handler)
+        );
+      }
     }
     // Lift any newly-added cell to the top of the z-order so it's visible
     // even if its default-layout position lands under an existing cell,
@@ -406,6 +518,7 @@ export class LayoutCanvas extends Widget {
     // active cell id survives refresh, but its slot nodes were just
     // recreated and lost the class.
     this._updatePinHighlight();
+    this._refreshToc();
   }
 
   private _dismissNewCellHighlight(cellId: string): void {
@@ -431,6 +544,25 @@ export class LayoutCanvas extends Widget {
       }
       this.refresh();
     }, 100);
+  }
+
+  private _scheduleTocRefresh(): void {
+    if (!this._tocVisible || !this.isVisible) {
+      return;
+    }
+    // Heavier debounce than output refresh — typing triggers many
+    // sharedModel.changed signals and rebuilding the heading list per
+    // keystroke is wasteful.
+    if (this._pendingTocRefresh !== null) {
+      clearTimeout(this._pendingTocRefresh);
+    }
+    this._pendingTocRefresh = setTimeout(() => {
+      this._pendingTocRefresh = null;
+      if (!this._tocVisible || !this.isVisible) {
+        return;
+      }
+      this._refreshToc();
+    }, 300);
   }
 
   private _snapHandlerFor(cellId: string, slot: SlotKey): ISnapHandler | null {
@@ -657,6 +789,10 @@ export class LayoutCanvas extends Widget {
     if (this._pendingOutputRefresh !== null) {
       clearTimeout(this._pendingOutputRefresh);
       this._pendingOutputRefresh = null;
+    }
+    if (this._pendingTocRefresh !== null) {
+      clearTimeout(this._pendingTocRefresh);
+      this._pendingTocRefresh = null;
     }
     for (const cell of this._cells) {
       cell.dispose();
