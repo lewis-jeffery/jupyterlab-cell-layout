@@ -22,15 +22,23 @@ import {
 } from '../managers/metadata';
 import { mmToPx, pxToMm } from '../widgets/units';
 
+export class PdfExportError extends Error {}
+
 const CAPTURE_SCALE = 2;
 const EXPORTING_CLASS = 'jp-CellLayout-exporting';
+
+// JPEG quality for the per-page bitmap. 0.85 is the standard
+// photographic sweet spot — barely-perceptible compression loss on
+// charts and plots, and roughly 10–20× smaller than lossless PNG for
+// plot-heavy notebooks. Sharp text edges can show very mild ringing
+// at this quality but the invisible-text overlay is what users
+// actually search/select, so it doesn't hurt readability.
+const JPEG_QUALITY = 0.85;
 
 export interface IExportOptions {
   /** Override the output file name (without extension). */
   filename?: string;
 }
-
-export class PdfExportError extends Error {}
 
 export async function exportToPdf(
   panel: NotebookPanel,
@@ -97,7 +105,7 @@ export async function exportToPdf(
     if (i > 0) {
       pdf.addPage();
     }
-    pdf.addImage(dataUrl, 'PNG', 0, 0, pageWidthMm, pageHeightMm);
+    pdf.addImage(dataUrl, 'JPEG', 0, 0, pageWidthMm, pageHeightMm);
   }
 
   // Add invisible text overlay to make the PDF searchable / selectable.
@@ -157,7 +165,7 @@ function sliceToDataUrl(
     throw new PdfExportError('Could not allocate 2D canvas for export slice.');
   }
   ctx.drawImage(source, sx, sy, sw, sh, 0, 0, sw, sh);
-  return slice.toDataURL('image/png');
+  return slice.toDataURL('image/jpeg', JPEG_QUALITY);
 }
 
 function deriveFilename(panel: NotebookPanel): string {
