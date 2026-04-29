@@ -18,6 +18,10 @@ import {
 import { BoxLayout, Widget } from '@lumino/widgets';
 
 import { showLayoutInfoDialog } from './demo/info-dialog';
+import {
+  type ICoverSheetData,
+  formatCoverDate
+} from './exporters/cover-sheet';
 import { exportToPdf, PdfExportError } from './exporters/pdf-export';
 import { CellCoordinator } from './managers/cell-coordinator';
 import { ExcelBridge } from './managers/excel-bridge';
@@ -28,6 +32,8 @@ import {
   type PageOrientation,
   type PageSize
 } from './managers/metadata';
+import { buildTocHeadings, type ITocSourceCell } from './managers/toc';
+import { coerceText } from './widgets/units';
 import { LayoutCanvas } from './widgets/layout-canvas';
 
 const COMMAND_TOGGLE_MODE = 'jupyterlab-cell-layout:toggle-mode';
@@ -39,6 +45,8 @@ const COMMAND_TOGGLE_TOC = 'jupyterlab-cell-layout:toggle-toc';
 const COMMAND_ADD_PAGE = 'jupyterlab-cell-layout:add-page';
 const COMMAND_REMOVE_PAGE = 'jupyterlab-cell-layout:remove-page';
 const COMMAND_EXPORT_PDF = 'jupyterlab-cell-layout:export-pdf';
+const COMMAND_EXPORT_PDF_WITH_COVER =
+  'jupyterlab-cell-layout:export-pdf-with-cover';
 const COMMAND_SHOW_INFO = 'jupyterlab-cell-layout:show-info';
 const COMMAND_MARK_AS_EXCEL = 'jupyterlab-cell-layout:mark-as-excel-view';
 const COMMAND_CLEAR_EXCEL = 'jupyterlab-cell-layout:clear-excel-view';
@@ -77,6 +85,10 @@ let sessionTocOpen = false;
 // LayoutCanvas → SummaryInputCell so summary-mode code cells can render via
 // JL's CodeMirror editor.
 let editorServicesRef: IEditorServices | null = null;
+
+// Reference to the loaded settings so the cover-sheet flow can write back
+// the last-used author. May be null if settings registry isn't available.
+let pluginSettingsRef: ISettingRegistryType.ISettings | null = null;
 
 interface INotebookState {
   manager: MetadataManager;
@@ -312,6 +324,158 @@ async function exportCurrentNotebookToPdf(panel: NotebookPanel): Promise<void> {
     // sees the rendered table rather than a "Reading…" placeholder.
     await s.canvas.awaitReady();
     const filename = await exportToPdf(panel, s.manager, pageEl);
+    console.log(`jupyterlab-cell-layout: exported ${filename}`);
+  } catch (err) {
+    if (err instanceof PdfExportError) {
+      window.alert(err.message);
+    } else {
+      console.error('jupyterlab-cell-layout: PDF export failed', err);
+      window.alert(`PDF export failed: ${(err as Error).message ?? err}`);
+    }
+  }
+}
+
+/**
+ * Modal dialog body for the cover-sheet export. Two-column grid: label +
+ * input, plus a checkbox for "Include table of contents".
+ */
+class CoverSheetPrompt extends Widget {
+  private readonly _title: HTMLInputElement;
+  private readonly _author: HTMLInputElement;
+  private readonly _date: HTMLInputElement;
+  private readonly _includeToc: HTMLInputElement;
+
+  constructor(initial: {
+    title: string;
+    author: string;
+    date: string;
+    includeToc: boolean;
+  }) {
+    super({ node: document.createElement('div') });
+    const node = this.node;
+    node.style.display = 'grid';
+    node.style.gridTemplateColumns = 'auto 1fr';
+    node.style.rowGap = '8px';
+    node.style.columnGap = '8px';
+    node.style.minWidth = '380px';
+    this._title = mkRow(node, 'Title', initial.title, 'Document title');
+    this._author = mkRow(node, 'Author', initial.author, 'Your name');
+    this._date = mkRow(node, 'Date', initial.date, '30 April 2026');
+    // Checkbox spans both columns so the label sits next to the box.
+    const cbWrap = document.createElement('label');
+    cbWrap.style.gridColumn = '1 / span 2';
+    cbWrap.style.display = 'flex';
+    cbWrap.style.alignItems = 'center';
+    cbWrap.style.gap = '6px';
+    cbWrap.style.marginTop = '4px';
+    this._includeToc = document.createElement('input');
+    this._includeToc.type = 'checkbox';
+    this._includeToc.checked = initial.includeToc;
+    cbWrap.appendChild(this._includeToc);
+    cbWrap.appendChild(
+      document.createTextNode('Include table of contents')
+    );
+    node.appendChild(cbWrap);
+  }
+
+  getValue(): ICoverSheetData {
+    return {
+      title: this._title.value.trim(),
+      author: this._author.value.trim(),
+      date: this._date.value.trim(),
+      includeToc: this._includeToc.checked
+    };
+  }
+}
+
+async function promptForCoverSheet(
+  panel: NotebookPanel
+): Promise<{ data: ICoverSheetData | null; accepted: boolean }> {
+  const basename = panel.context.path.split('/').pop() ?? 'Document';
+  const defaultTitle = basename.replace(/\.ipynb$/i, '');
+  const lastAuthor =
+    typeof pluginSettingsRef?.composite?.lastAuthor === 'string'
+      ? (pluginSettingsRef.composite.lastAuthor as string)
+      : '';
+  const defaultDate = formatCoverDate(new Date());
+  const body = new CoverSheetPrompt({
+    title: defaultTitle,
+    author: lastAuthor,
+    date: defaultDate,
+    includeToc: true
+  });
+  const result = await showDialog({
+    title: 'Export PDF with cover sheet',
+    body,
+    buttons: [Dialog.cancelButton(), Dialog.okButton({ label: 'Export' })]
+  });
+  return { data: body.getValue(), accepted: !!result.button.accept };
+}
+
+async function exportCurrentNotebookToPdfWithCover(
+  panel: NotebookPanel
+): Promise<void> {
+  const s = state.get(panel);
+  if (!s) {
+    return;
+  }
+  const pageEl = s.canvas.node.querySelector(
+    '.jp-CellLayout-page'
+  ) as HTMLElement | null;
+  if (!pageEl) {
+    console.warn('jupyterlab-cell-layout: no page element to export');
+    return;
+  }
+  if (!isSummaryMode(s.manager)) {
+    window.alert('Switch to summary mode before exporting (Ctrl+Shift+T).');
+    return;
+  }
+  const { data, accepted } = await promptForCoverSheet(panel);
+  if (!accepted || !data) {
+    return;
+  }
+  // Persist the author so subsequent exports remember it.
+  if (data.author && pluginSettingsRef) {
+    try {
+      await pluginSettingsRef.set('lastAuthor', data.author);
+    } catch (err) {
+      console.warn(
+        'jupyterlab-cell-layout: could not persist lastAuthor',
+        err
+      );
+    }
+  }
+  // Build the ToC heading list from current cell sources, matching the
+  // sidebar's input.
+  const layout = s.manager.read();
+  const settings = layout.settings;
+  const pageDims =
+    settings.page_size === 'A3'
+      ? { width: 297, height: 420 }
+      : { width: 210, height: 297 };
+  const isLandscape = settings.orientation === 'landscape';
+  const pageHeightMm = isLandscape ? pageDims.width : pageDims.height;
+  const pageCount = Math.max(1, Math.floor(settings.page_count));
+  const sources: ITocSourceCell[] = [];
+  for (const entry of s.coordinator.list()) {
+    if (entry.layout.mode !== 'summary') {
+      continue;
+    }
+    sources.push({
+      cellId: entry.cellModel.id,
+      type: entry.layout.type,
+      source: coerceText(entry.cellModel.sharedModel.getSource()),
+      xMm: entry.layout.input.position.x,
+      yMm: entry.layout.input.position.y
+    });
+  }
+  const tocHeadings = buildTocHeadings(sources, pageHeightMm, pageCount);
+  try {
+    await s.canvas.awaitReady();
+    const filename = await exportToPdf(panel, s.manager, pageEl, {
+      cover: data,
+      tocHeadings
+    });
     console.log(`jupyterlab-cell-layout: exported ${filename}`);
   } catch (err) {
     if (err instanceof PdfExportError) {
@@ -649,7 +813,8 @@ function attachNotebook(panel: NotebookPanel): void {
         panel.content.rendermime,
         excelBridge,
         editorServicesRef ?? undefined,
-        cellId => runCellById(panel, cellId)
+        cellId => runCellById(panel, cellId),
+        () => refreshCellAffordances(panel)
       );
 
     const layout = panel.layout as BoxLayout;
@@ -845,6 +1010,17 @@ const plugin: JupyterFrontEndPlugin<void> = {
       isEnabled: () => notebooks.currentWidget !== null
     });
 
+    app.commands.addCommand(COMMAND_EXPORT_PDF_WITH_COVER, {
+      label: 'Cell Layout: Export to PDF with cover sheet…',
+      execute: () => {
+        const panel = notebooks.currentWidget;
+        if (panel) {
+          void exportCurrentNotebookToPdfWithCover(panel);
+        }
+      },
+      isEnabled: () => notebooks.currentWidget !== null
+    });
+
     app.commands.addCommand(COMMAND_TOGGLE_CELL_INCLUSION, {
       label: 'Cell Layout: Toggle cell inclusion on summary canvas',
       execute: () => {
@@ -975,6 +1151,7 @@ const plugin: JupyterFrontEndPlugin<void> = {
         COMMAND_ADD_PAGE,
         COMMAND_REMOVE_PAGE,
         COMMAND_EXPORT_PDF,
+        COMMAND_EXPORT_PDF_WITH_COVER,
         COMMAND_TOGGLE_CELL_INCLUSION,
         COMMAND_INSERT_PAGE_ABOVE,
         COMMAND_INSERT_PAGE_BELOW,
@@ -1033,6 +1210,7 @@ const plugin: JupyterFrontEndPlugin<void> = {
       settingRegistry
         .load(plugin.id)
         .then(settings => {
+          pluginSettingsRef = settings;
           readUserDefaults(settings);
           settings.changed.connect(() => readUserDefaults(settings));
           console.log(

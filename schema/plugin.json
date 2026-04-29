@@ -54,6 +54,12 @@
       "default": true,
       "title": "Smart alignment guides",
       "description": "When dragging or resizing a cell, show alignment guides and snap to nearby cell edges, centres, and page edges. Smart-guide snap takes precedence over the grid snap when within tolerance (2 mm)."
+    },
+    "lastAuthor": {
+      "type": "string",
+      "default": "",
+      "title": "Last cover-sheet author",
+      "description": "Pre-fills the Author field on the PDF cover-sheet dialog. The exporter writes this back when you click Export, so it remembers across sessions."
     }
   },
   "additionalProperties": false

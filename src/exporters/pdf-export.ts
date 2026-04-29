@@ -20,7 +20,10 @@ import {
   type MetadataManager,
   PAGE_SIZES_MM
 } from '../managers/metadata';
+import type { ITocHeading } from '../managers/toc';
 import { mmToPx, pxToMm } from '../widgets/units';
+
+import { type ICoverSheetData, renderCoverAndToc } from './cover-sheet';
 
 export class PdfExportError extends Error {}
 
@@ -38,6 +41,15 @@ const JPEG_QUALITY = 0.85;
 export interface IExportOptions {
   /** Override the output file name (without extension). */
   filename?: string;
+  /** When set, prepend a cover page (and optional ToC) before content. */
+  cover?: ICoverSheetData;
+  /**
+   * Heading list for the cover-sheet ToC. Required when
+   * `cover.includeToc` is true; ignored otherwise. Caller builds this
+   * via `buildTocHeadings` from `managers/toc.ts` with the same source
+   * data the canvas uses for its sidebar.
+   */
+  tocHeadings?: readonly ITocHeading[];
 }
 
 export async function exportToPdf(
@@ -67,6 +79,11 @@ export async function exportToPdf(
     pageCount
   );
 
+  const tocHeadings: readonly ITocHeading[] =
+    options.cover?.includeToc && options.tocHeadings
+      ? options.tocHeadings
+      : [];
+
   pageEl.classList.add(EXPORTING_CLASS);
   let fullCanvas: HTMLCanvasElement;
   let linkRects: ILinkRect[];
@@ -93,6 +110,19 @@ export async function exportToPdf(
     format: settings.page_size.toLowerCase() // 'a4' or 'a3'
   });
 
+  // Render the cover (and optional ToC) into the PDF's existing first
+  // page. Returns the number of pages we've used before content begins,
+  // which we use to offset every subsequent page reference.
+  const pagesBeforeContent = options.cover
+    ? renderCoverAndToc(
+        pdf,
+        options.cover,
+        tocHeadings,
+        pageWidthMm,
+        pageHeightMm
+      ).pagesBeforeContent
+    : 0;
+
   const sliceHeightPx = fullCanvas.height / pageCount;
   for (let i = 0; i < pageCount; i++) {
     const dataUrl = sliceToDataUrl(
@@ -102,7 +132,14 @@ export async function exportToPdf(
       fullCanvas.width,
       Math.floor(sliceHeightPx)
     );
-    if (i > 0) {
+    // First content page: if no cover was rendered, the pdf already has
+    // an empty page 1 we draw onto. If a cover was rendered, we addPage
+    // to start content. Subsequent content pages always addPage.
+    if (i === 0) {
+      if (pagesBeforeContent > 0) {
+        pdf.addPage();
+      }
+    } else {
       pdf.addPage();
     }
     pdf.addImage(dataUrl, 'JPEG', 0, 0, pageWidthMm, pageHeightMm);
@@ -116,7 +153,7 @@ export async function exportToPdf(
     if (pageIndex < 0 || pageIndex >= pageCount) {
       continue;
     }
-    pdf.setPage(pageIndex + 1);
+    pdf.setPage(pagesBeforeContent + pageIndex + 1);
     pdf.setFontSize(run.fontSizePt);
     const localTopMm = run.topMm - pageIndex * pageHeightMm;
     // jsPDF text y is the baseline; offset by font size so the invisible
@@ -138,7 +175,7 @@ export async function exportToPdf(
     if (pageIndex < 0 || pageIndex >= pageCount) {
       continue;
     }
-    pdf.setPage(pageIndex + 1);
+    pdf.setPage(pagesBeforeContent + pageIndex + 1);
     const localTopMm = link.topMm - pageIndex * pageHeightMm;
     pdf.link(link.leftMm, localTopMm, link.widthMm, link.heightMm, {
       url: link.href
@@ -149,6 +186,7 @@ export async function exportToPdf(
   pdf.save(filename);
   return filename;
 }
+
 
 function sliceToDataUrl(
   source: HTMLCanvasElement,

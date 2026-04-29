@@ -34,6 +34,13 @@ export interface ISummaryCellOptions {
    *  drag. Consulted on each pointerdown so flipping the link mid-session
    *  takes immediate effect. */
   isCellLinked?: (cellId: string) => boolean;
+  /** Whether this cell is part of a multi-cell selection (size > 1).
+   *  Selection-of-one is treated like the old pin (no group drag).
+   *  Multi-cell selection group-drags every member. */
+  isInMultiSelection?: (cellId: string) => boolean;
+  /** Returns drag siblings for every slot of every OTHER cell in the
+   *  multi-cell selection. Called only when `isInMultiSelection` is true. */
+  getMultiSelectionSiblings?: (cellId: string) => IDragSibling[];
 }
 
 /**
@@ -50,6 +57,9 @@ export class SummaryCellWidget {
   readonly outputs: SummaryOutputCell[];
   private _main: SummaryInputCell | SummaryExcelCell;
   private _zIndex: number;
+  // Captured at construction so multi-selection drag can attach this
+  // cell's nodes as siblings of another cell's drag.
+  private _coordinator?: CellCoordinator;
 
   constructor(
     cellModel: ICellModel,
@@ -67,6 +77,7 @@ export class SummaryCellWidget {
       displayIndex,
       snapHandlerFactory
     } = options;
+    this._coordinator = coordinator;
     const indexLabel = String(displayIndex);
 
     const getGridSnapMm = coordinator
@@ -74,35 +85,51 @@ export class SummaryCellWidget {
       : undefined;
 
     const isCellLinked = options.isCellLinked;
+    const isInMultiSelection = options.isInMultiSelection;
+    const getMultiSelectionSiblings = options.getMultiSelectionSiblings;
     const domPosMm = (node: HTMLElement): { x: number; y: number } => ({
       x: pxToMm(node.offsetLeft),
       y: pxToMm(node.offsetTop)
     });
-    // Group-drag siblings for the input slot: each output, in DOM order.
-    // Empty unless the canvas considers this cell currently linked
-    // (double-clicked). Closure reads `this.outputs` at call time, so the
-    // list is correct even though the outputs are constructed below.
+    /** True when the dragged cell should bring its own intra-cell slots
+     *  along (input + outputs as one). Triggered by either: an active
+     *  link (F7 double-click) OR multi-cell selection membership. */
+    const dragsAsCellGroup = (): boolean =>
+      !!isCellLinked?.(id) || !!isInMultiSelection?.(id);
+    /** Group-drag siblings for the input slot: each output of THIS cell,
+     *  in DOM order, plus every slot of every OTHER selected cell when
+     *  in a multi-cell selection. */
     const getInputSiblings = (): IDragSibling[] => {
-      if (!coordinator || !isCellLinked?.(id)) {
+      if (!coordinator) {
         return [];
       }
-      return this.outputs.map(out => ({
-        node: out.node,
-        getInitialMm: () => domPosMm(out.node),
-        onPositionChange: pos => {
-          out.commitPosition(pos);
-          coordinator.updateOutputPosition(id, out.slotId, pos);
+      const siblings: IDragSibling[] = [];
+      if (dragsAsCellGroup()) {
+        for (const out of this.outputs) {
+          siblings.push({
+            node: out.node,
+            getInitialMm: () => domPosMm(out.node),
+            onPositionChange: pos => {
+              out.commitPosition(pos);
+              coordinator.updateOutputPosition(id, out.slotId, pos);
+            }
+          });
         }
-      }));
+      }
+      if (isInMultiSelection?.(id)) {
+        siblings.push(...(getMultiSelectionSiblings?.(id) ?? []));
+      }
+      return siblings;
     };
-    // For an output slot's drag: siblings are the input + every other
-    // output of the same cell.
+    /** Group-drag siblings for an output slot: the input + every other
+     *  output of THIS cell, plus the multi-cell selection members. */
     const getOutputSiblings = (excludeSlot: OutputSlotId): IDragSibling[] => {
-      if (!coordinator || !isCellLinked?.(id) || !this._main) {
+      if (!coordinator || !this._main) {
         return [];
       }
-      const siblings: IDragSibling[] = [
-        {
+      const siblings: IDragSibling[] = [];
+      if (dragsAsCellGroup()) {
+        siblings.push({
           node: this._main.node,
           getInitialMm: () => domPosMm(this._main.node),
           onPositionChange: pos => {
@@ -111,20 +138,23 @@ export class SummaryCellWidget {
             );
             coordinator.updateInputPosition(id, pos);
           }
-        }
-      ];
-      for (const out of this.outputs) {
-        if (out.slotId === excludeSlot) {
-          continue;
-        }
-        siblings.push({
-          node: out.node,
-          getInitialMm: () => domPosMm(out.node),
-          onPositionChange: pos => {
-            out.commitPosition(pos);
-            coordinator.updateOutputPosition(id, out.slotId, pos);
-          }
         });
+        for (const out of this.outputs) {
+          if (out.slotId === excludeSlot) {
+            continue;
+          }
+          siblings.push({
+            node: out.node,
+            getInitialMm: () => domPosMm(out.node),
+            onPositionChange: pos => {
+              out.commitPosition(pos);
+              coordinator.updateOutputPosition(id, out.slotId, pos);
+            }
+          });
+        }
+      }
+      if (isInMultiSelection?.(id)) {
+        siblings.push(...(getMultiSelectionSiblings?.(id) ?? []));
       }
       return siblings;
     };
@@ -257,6 +287,44 @@ export class SummaryCellWidget {
 
   widgets(): Widget[] {
     return [this._main, ...this.outputs];
+  }
+
+  /**
+   * Build IDragSibling entries for every slot of this cell — input plus
+   * every enabled output. Used by the canvas during a multi-cell drag
+   * to attach this cell's nodes as siblings of the primary drag.
+   */
+  collectDragSiblings(): IDragSibling[] {
+    const siblings: IDragSibling[] = [];
+    const coord = this._coordinator;
+    if (!coord) {
+      return siblings;
+    }
+    const id = this.cellId;
+    const domPosMm = (node: HTMLElement) => ({
+      x: pxToMm(node.offsetLeft),
+      y: pxToMm(node.offsetTop)
+    });
+    const main = this._main;
+    siblings.push({
+      node: main.node,
+      getInitialMm: () => domPosMm(main.node),
+      onPositionChange: pos => {
+        main.commitPosition(pos);
+        coord.updateInputPosition(id, pos);
+      }
+    });
+    for (const out of this.outputs) {
+      siblings.push({
+        node: out.node,
+        getInitialMm: () => domPosMm(out.node),
+        onPositionChange: pos => {
+          out.commitPosition(pos);
+          coord.updateOutputPosition(id, out.slotId, pos);
+        }
+      });
+    }
+    return siblings;
   }
 
   /**

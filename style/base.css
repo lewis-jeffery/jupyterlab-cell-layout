@@ -88,6 +88,23 @@
   height: 1px;
 }
 
+/* Drag-marquee overlay shown while the user lassos cells from empty
+ * canvas. Sits above cells (z-index 100) but below snap guides so a
+ * concurrent drag still shows guides on top. */
+.jp-CellLayout-marquee {
+  position: absolute;
+  pointer-events: none;
+  background: rgba(33, 150, 243, 0.08);
+  border: 1px dashed var(--jp-brand-color1, #1976d2);
+  z-index: 100;
+}
+
+/* Hide the marquee in PDF export (defensive — capture happens after
+ * pointerup so the element is normally already gone). */
+.jp-CellLayout-exporting .jp-CellLayout-marquee {
+  display: none;
+}
+
 /* Hide editor chrome during PDF export so the rendered bitmap is clean.
  * Page-number badges intentionally stay visible — useful in the printed PDF. */
 .jp-CellLayout-exporting .jp-CellLayout-pageBreak,

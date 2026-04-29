@@ -31,6 +31,7 @@ import { coerceText, mmToPx, pxToMm } from './units';
 
 const SNAP_MIN_SIZE = { width: 20, height: 15 };
 const PAGE_BREAK_HEIGHT_PX = 12;
+const MARQUEE_DRAG_THRESHOLD_PX = 3;
 
 export class LayoutCanvas extends Widget {
   private _cells: SummaryCellWidget[] = [];
@@ -40,7 +41,13 @@ export class LayoutCanvas extends Widget {
   private _tocVisible = false;
   private _currentPageSize: PageSize = 'A4';
   private _currentOrientation: PageOrientation = 'portrait';
-  private _activeCellId: string | null = null;
+  // The current multi-cell selection. Single-cell selection looks
+  // identical to the old "pin" highlight; shift-click adds/removes;
+  // marquee + bulk ops are layered on top in later P1 iterations.
+  private _selection = new Set<string>();
+  // Most recently clicked cell — survives selection changes and is
+  // consumed by the mode-switch carryover (`consumeActiveCellId`).
+  private _lastTouchedCellId: string | null = null;
   // Group-drag link state: when set to a cellId, dragging any of its slots
   // moves all slots together. Set on double-click; cleared by Esc, single
   // click on a different cell, or click on empty page.
@@ -68,7 +75,8 @@ export class LayoutCanvas extends Widget {
     private readonly rendermime?: IRenderMimeRegistry,
     private readonly excelBridge?: ExcelBridge,
     private readonly editorServices?: IEditorServices,
-    private readonly runCellById?: (cellId: string) => void
+    private readonly runCellById?: (cellId: string) => void,
+    private readonly onInclusionChanged?: () => void
   ) {
     super();
     this.addClass('jp-CellLayout-root');
@@ -168,15 +176,23 @@ export class LayoutCanvas extends Widget {
   }
 
   /**
-   * Persistent highlight on the active cell's group. Survives scrolling
-   * and other on-canvas activity — useful when input and output slots
-   * are on different pages and the transient hover-link can't follow.
+   * Selection + link handling. Selection is a Set<cellId>; click replaces
+   * selection with one cell; shift-click toggles. Selection drives the
+   * "pinned" outline (single-cell selection looks identical to the old
+   * F5 pin). Link (F7) stays a parallel one-cell quick-group concept,
+   * toggled with double-click.
    *
-   * Pin moves with `_activeCellId` (which `bringCellToFront` updates on
-   * every interact). Two ways to clear: pressing Escape inside the
-   * canvas, or clicking on an empty area of the page.
+   * Two pointerdown listeners cooperate:
+   *  - Capture-phase on `_page` runs before the per-slot drag handler
+   *    (which is also capture-phase on the slot itself but at a lower
+   *    DOM level). Updates selection on slot clicks. Shift-click also
+   *    suppresses drag init by stopping propagation, so shift-click is
+   *    a pure selection toggle.
+   *  - Bubble-phase clears selection + link when the click lands on an
+   *    empty area of the page.
    */
   private _wirePinHandling(): void {
+    const SLOT = '.jp-CellLayout-input, .jp-CellLayout-output';
     const onKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') {
         let changed = false;
@@ -184,35 +200,222 @@ export class LayoutCanvas extends Widget {
           this._linkedCellId = null;
           changed = true;
         }
-        if (this._activeCellId) {
-          this._activeCellId = null;
+        if (this._selection.size > 0) {
+          this._selection.clear();
+          this._lastTouchedCellId = null;
           changed = true;
         }
         if (changed) {
           this._updatePinHighlight();
         }
+        return;
+      }
+      // The bulk-op shortcuts only act when the canvas has at least one
+      // cell selected. They never fire from inside a focused editor —
+      // CodeMirror consumes Delete / Backspace and the bracket keys
+      // for its own editing, so the canvas's bubble-phase listener only
+      // sees them when focus is on the canvas itself.
+      if (this._selection.size === 0) {
+        return;
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        this._deleteSelectionFromCanvas();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === ']') {
+        e.preventDefault();
+        this._bringSelectionToFront();
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === '[') {
+        e.preventDefault();
+        this._sendSelectionToBack();
+        return;
       }
     };
-    const onPointerDown = (e: PointerEvent): void => {
-      if (!this._activeCellId && !this._linkedCellId) {
+    const onCapturePointerDown = (e: PointerEvent): void => {
+      if (e.button !== 0) {
         return;
       }
       const target = e.target as HTMLElement | null;
-      // Click landed on a slot — interact will set a new pin (and may
-      // clear the link below if it's a different cell).
-      if (target?.closest?.('.jp-CellLayout-input, .jp-CellLayout-output')) {
+      const slot = target?.closest?.(SLOT) as HTMLElement | null;
+      if (!slot) {
         return;
       }
-      // Click on empty page area — drop both pin and link.
-      this._activeCellId = null;
-      this._linkedCellId = null;
-      this._updatePinHighlight();
+      const cellId = slot.dataset.cellId;
+      if (!cellId) {
+        return;
+      }
+      this._lastTouchedCellId = cellId;
+      if (e.shiftKey) {
+        // Shift-click: toggle membership; do not start a drag. The slot's
+        // own drag handler runs after this in the same capture phase, so
+        // we have to stop propagation to suppress it.
+        if (this._selection.has(cellId)) {
+          this._selection.delete(cellId);
+        } else {
+          this._selection.add(cellId);
+        }
+        this._updatePinHighlight();
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
+      // Plain click — replace selection, but only when the click is on a
+      // cell not already in the selection. Clicking inside an existing
+      // selected cell preserves the multi-cell group so the user can
+      // drag the whole group from any of its members (drag wiring
+      // arrives in a later step; for now this just keeps the highlight
+      // intact while the drag handler initiates a single-slot move).
+      if (!this._selection.has(cellId)) {
+        this._selection.clear();
+        this._selection.add(cellId);
+        this._updatePinHighlight();
+      }
+    };
+    // Marquee state. Tracks a potential drag-select that starts on an
+    // empty area of the page. Lazy: nothing materialises in the DOM until
+    // the user actually moves the cursor past `MARQUEE_DRAG_THRESHOLD_PX`,
+    // so a plain click on empty area still works as "clear selection".
+    let marqueeActive = false;
+    let marqueeMaterialised = false;
+    let marqueeAdditive = false;
+    let marqueeStartX = 0;
+    let marqueeStartY = 0;
+    let marqueePointerId: number | null = null;
+    let marqueeEl: HTMLElement | null = null;
+
+    const removeMarqueeEl = (): void => {
+      marqueeEl?.remove();
+      marqueeEl = null;
+    };
+
+    const updateMarqueeRect = (clientX: number, clientY: number): {
+      leftPx: number;
+      topPx: number;
+      widthPx: number;
+      heightPx: number;
+    } => {
+      const pageRect = this._page.getBoundingClientRect();
+      const x1 = marqueeStartX - pageRect.left;
+      const y1 = marqueeStartY - pageRect.top;
+      const x2 = clientX - pageRect.left;
+      const y2 = clientY - pageRect.top;
+      const leftPx = Math.min(x1, x2);
+      const topPx = Math.min(y1, y2);
+      const widthPx = Math.abs(x2 - x1);
+      const heightPx = Math.abs(y2 - y1);
+      if (marqueeEl) {
+        marqueeEl.style.left = `${leftPx}px`;
+        marqueeEl.style.top = `${topPx}px`;
+        marqueeEl.style.width = `${widthPx}px`;
+        marqueeEl.style.height = `${heightPx}px`;
+      }
+      return { leftPx, topPx, widthPx, heightPx };
+    };
+
+    const onPointerMove = (e: PointerEvent): void => {
+      if (!marqueeActive || e.pointerId !== marqueePointerId) {
+        return;
+      }
+      const dx = e.clientX - marqueeStartX;
+      const dy = e.clientY - marqueeStartY;
+      if (
+        !marqueeMaterialised &&
+        Math.hypot(dx, dy) < MARQUEE_DRAG_THRESHOLD_PX
+      ) {
+        return;
+      }
+      if (!marqueeMaterialised) {
+        marqueeMaterialised = true;
+        marqueeEl = document.createElement('div');
+        marqueeEl.className = 'jp-CellLayout-marquee';
+        this._page.appendChild(marqueeEl);
+      }
+      updateMarqueeRect(e.clientX, e.clientY);
+    };
+
+    const onPointerUp = (e: PointerEvent): void => {
+      if (!marqueeActive || e.pointerId !== marqueePointerId) {
+        return;
+      }
+      const wasMaterialised = marqueeMaterialised;
+      const additive = marqueeAdditive;
+      const finalRect = wasMaterialised
+        ? updateMarqueeRect(e.clientX, e.clientY)
+        : null;
+      // Reset state up front so any selection-side effects below see a
+      // clean slate.
+      marqueeActive = false;
+      marqueeMaterialised = false;
+      marqueeAdditive = false;
+      marqueePointerId = null;
+      removeMarqueeEl();
+      try {
+        this._page.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      if (wasMaterialised && finalRect) {
+        const hits = this._collectCellsInRect(finalRect);
+        if (additive) {
+          for (const id of hits) {
+            this._selection.add(id);
+          }
+        } else {
+          this._selection.clear();
+          for (const id of hits) {
+            this._selection.add(id);
+          }
+        }
+        if (hits.length > 0) {
+          this._lastTouchedCellId = hits[hits.length - 1];
+        }
+        this._updatePinHighlight();
+        return;
+      }
+      // No movement → treat as a click on empty: clear selection (and
+      // link) unless shift was held (shift-empty-click is a no-op).
+      if (!additive) {
+        if (this._selection.size > 0 || this._linkedCellId) {
+          this._selection.clear();
+          this._linkedCellId = null;
+          this._lastTouchedCellId = null;
+          this._updatePinHighlight();
+        }
+      }
+    };
+
+    const onBubblePointerDown = (e: PointerEvent): void => {
+      if (e.button !== 0) {
+        return;
+      }
+      const target = e.target as HTMLElement | null;
+      // Click landed on a slot — selection was handled in the
+      // capture-phase listener above and the slot's own drag handler
+      // takes over. Marquee only triggers on empty-canvas drags.
+      if (target?.closest?.(SLOT)) {
+        return;
+      }
+      // Empty area — start a potential marquee. Material doesn't appear
+      // until the user moves past the threshold; a static click resolves
+      // as "clear selection" in onPointerUp.
+      marqueeActive = true;
+      marqueeMaterialised = false;
+      marqueeAdditive = e.shiftKey;
+      marqueeStartX = e.clientX;
+      marqueeStartY = e.clientY;
+      marqueePointerId = e.pointerId;
+      try {
+        this._page.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
     };
     const onDblClick = (e: MouseEvent): void => {
       const target = e.target as HTMLElement | null;
-      const slot = target?.closest?.(
-        '.jp-CellLayout-input, .jp-CellLayout-output'
-      ) as HTMLElement | null;
+      const slot = target?.closest?.(SLOT) as HTMLElement | null;
       if (!slot) {
         return;
       }
@@ -226,19 +429,203 @@ export class LayoutCanvas extends Widget {
       this._updatePinHighlight();
     };
     this.node.addEventListener('keydown', onKeyDown);
-    this._page.addEventListener('pointerdown', onPointerDown);
+    this._page.addEventListener('pointerdown', onCapturePointerDown, {
+      capture: true
+    });
+    this._page.addEventListener('pointerdown', onBubblePointerDown);
+    this._page.addEventListener('pointermove', onPointerMove);
+    this._page.addEventListener('pointerup', onPointerUp);
+    this._page.addEventListener('pointercancel', onPointerUp);
     this._page.addEventListener('dblclick', onDblClick);
     this._pinDispose = () => {
       this.node.removeEventListener('keydown', onKeyDown);
-      this._page.removeEventListener('pointerdown', onPointerDown);
+      this._page.removeEventListener('pointerdown', onCapturePointerDown, {
+        capture: true
+      });
+      this._page.removeEventListener('pointerdown', onBubblePointerDown);
+      this._page.removeEventListener('pointermove', onPointerMove);
+      this._page.removeEventListener('pointerup', onPointerUp);
+      this._page.removeEventListener('pointercancel', onPointerUp);
       this._page.removeEventListener('dblclick', onDblClick);
+      removeMarqueeEl();
     };
+  }
+
+  /**
+   * Hit-test cells against a marquee rect (in `_page`-relative px).
+   * A cell is selected if any of its slots' bounding box overlaps the
+   * marquee. Returns cellIds in DOM order, deduplicated.
+   */
+  private _collectCellsInRect(rect: {
+    leftPx: number;
+    topPx: number;
+    widthPx: number;
+    heightPx: number;
+  }): string[] {
+    const right = rect.leftPx + rect.widthPx;
+    const bottom = rect.topPx + rect.heightPx;
+    const seen = new Set<string>();
+    const result: string[] = [];
+    const slots = this._page.querySelectorAll<HTMLElement>(
+      '.jp-CellLayout-input, .jp-CellLayout-output'
+    );
+    for (const slot of Array.from(slots)) {
+      const cellId = slot.dataset.cellId ?? '';
+      if (!cellId || seen.has(cellId)) {
+        continue;
+      }
+      const left = slot.offsetLeft;
+      const top = slot.offsetTop;
+      const slotRight = left + slot.offsetWidth;
+      const slotBottom = top + slot.offsetHeight;
+      const overlaps =
+        slotRight >= rect.leftPx &&
+        left <= right &&
+        slotBottom >= rect.topPx &&
+        top <= bottom;
+      if (overlaps) {
+        seen.add(cellId);
+        result.push(cellId);
+      }
+    }
+    return result;
   }
 
   /** Returns true if `cellId` is the currently group-linked cell. Used by
    *  per-slot drag wiring to decide whether to attach sibling nodes. */
   isCellLinked(cellId: string): boolean {
     return this._linkedCellId === cellId;
+  }
+
+  /** True when the cell is in the selection AND the selection contains
+   *  more than one cell. Selection-of-1 doesn't group-drag (preserves
+   *  the old pin behaviour); only multi-cell selection does. */
+  private _isInMultiSelection(cellId: string): boolean {
+    return this._selection.size > 1 && this._selection.has(cellId);
+  }
+
+  /**
+   * Remove every selected cell from the summary canvas (toggle mode →
+   * 'edit'). Refreshes the canvas once after all toggles so the user
+   * sees a single rebuild rather than N intermediate states.
+   */
+  private _deleteSelectionFromCanvas(): void {
+    if (this._selection.size === 0) {
+      return;
+    }
+    const ids = Array.from(this._selection);
+    for (const id of ids) {
+      this.coordinator.toggleCellInclusion(id);
+    }
+    this._selection.clear();
+    this._lastTouchedCellId = null;
+    this.refresh();
+    // Sync the edit-mode eye-toggle affordances so they reflect the new
+    // included/excluded state when the user switches modes next.
+    this.onInclusionChanged?.();
+  }
+
+  /**
+   * Bring every selected cell above all non-selected cells, preserving
+   * the relative z-order within the selection.
+   */
+  private _bringSelectionToFront(): void {
+    const selected = this._sortedSelectionByZ();
+    if (selected.length === 0) {
+      return;
+    }
+    let maxOther = 0;
+    for (const [id, group] of this._groups.entries()) {
+      if (this._selection.has(id)) {
+        continue;
+      }
+      maxOther = Math.max(maxOther, group.zIndex);
+    }
+    for (let i = 0; i < selected.length; i++) {
+      const { id, group } = selected[i];
+      const z = maxOther + i + 1;
+      group.setZIndex(z);
+      this.coordinator.setCellZIndex(id, z);
+    }
+  }
+
+  /**
+   * Send every selected cell below all non-selected cells, preserving
+   * the relative z-order within the selection. Re-bases all z-indexes
+   * to start at 1 so we don't accumulate ever-decreasing values across
+   * repeated invocations.
+   */
+  private _sendSelectionToBack(): void {
+    const selected = this._sortedSelectionByZ();
+    if (selected.length === 0) {
+      return;
+    }
+    const others: Array<{ id: string; group: SummaryCellWidget }> = [];
+    for (const [id, group] of this._groups.entries()) {
+      if (this._selection.has(id)) {
+        continue;
+      }
+      others.push({ id, group });
+    }
+    others.sort((a, b) => a.group.zIndex - b.group.zIndex);
+    let z = 1;
+    // Selected cells first (back of stack), in their relative order.
+    for (const { id, group } of selected) {
+      group.setZIndex(z);
+      this.coordinator.setCellZIndex(id, z);
+      z++;
+    }
+    for (const { id, group } of others) {
+      group.setZIndex(z);
+      this.coordinator.setCellZIndex(id, z);
+      z++;
+    }
+  }
+
+  /**
+   * Selection sorted by current z-index (lowest first). Cells whose
+   * widget isn't currently mounted are dropped silently — selection
+   * may include ids no longer on the canvas if a refresh races with
+   * a key event.
+   */
+  private _sortedSelectionByZ(): Array<{
+    id: string;
+    group: SummaryCellWidget;
+  }> {
+    const selected: Array<{ id: string; group: SummaryCellWidget }> = [];
+    for (const id of this._selection) {
+      const group = this._groups.get(id);
+      if (group) {
+        selected.push({ id, group });
+      }
+    }
+    selected.sort((a, b) => a.group.zIndex - b.group.zIndex);
+    return selected;
+  }
+
+  /**
+   * Collect drag siblings for every slot of every OTHER cell in the
+   * multi-cell selection. Used by `SummaryCellWidget` when one of its
+   * slots is being dragged — those nodes follow the primary by the
+   * same delta and persist their final positions on pointerup.
+   */
+  private _collectMultiSelectionSiblings(
+    excludeCellId: string
+  ): import('./draggable').IDragSibling[] {
+    const siblings: import('./draggable').IDragSibling[] = [];
+    for (const cellId of this._selection) {
+      if (cellId === excludeCellId) {
+        continue;
+      }
+      const group = this._groups.get(cellId);
+      if (!group) {
+        continue;
+      }
+      for (const sibling of group.collectDragSiblings()) {
+        siblings.push(sibling);
+      }
+    }
+    return siblings;
   }
 
   /**
@@ -290,9 +677,9 @@ export class LayoutCanvas extends Widget {
     this._page
       .querySelectorAll(`.${PIN}, .${LINK}`)
       .forEach(el => el.classList.remove(PIN, LINK));
-    if (this._activeCellId) {
+    for (const cellId of this._selection) {
       this._page
-        .querySelectorAll(`[data-cell-id="${this._activeCellId}"]`)
+        .querySelectorAll(`[data-cell-id="${cellId}"]`)
         .forEach(el => el.classList.add(PIN));
     }
     if (this._linkedCellId) {
@@ -466,7 +853,9 @@ export class LayoutCanvas extends Widget {
         onRunCell: this.runCellById,
         onInteract: () => this.bringCellToFront(cellId),
         snapHandlerFactory: (id, slot) => this._snapHandlerFor(id, slot),
-        isCellLinked: id => this.isCellLinked(id)
+        isCellLinked: id => this.isCellLinked(id),
+        isInMultiSelection: id => this._isInMultiSelection(id),
+        getMultiSelectionSiblings: id => this._collectMultiSelectionSiblings(id)
       });
       this._cells.push(widget);
       this._groups.set(cellId, widget);
@@ -567,15 +956,24 @@ export class LayoutCanvas extends Widget {
 
   private _snapHandlerFor(cellId: string, slot: SlotKey): ISnapHandler | null {
     const excludeKey = `${cellId}:${slot}`;
-    // When a cell is linked for group drag every sibling moves with the
-    // primary; if we left them in the snap-target set, snap distances
-    // would be locked at drag start (siblings move with primary so the
-    // distance never changes) and would either fire instantly or never.
-    // Exclude the whole cellId in that case.
-    const collect = (): IRect[] =>
-      this.isCellLinked(cellId)
-        ? this._collectSnapRects(excludeKey, cellId)
-        : this._collectSnapRects(excludeKey);
+    // When a cell is linked for group drag, or when it's part of a
+    // multi-cell selection, every sibling moves with the primary; if we
+    // left them in the snap-target set, snap distances would be locked
+    // at drag start (siblings move with primary so the distance never
+    // changes) and would either fire instantly or never. Exclude the
+    // whole cell (link case) or the whole selection (multi-select case).
+    const collect = (): IRect[] => {
+      const excludedCells = new Set<string>();
+      if (this.isCellLinked(cellId)) {
+        excludedCells.add(cellId);
+      }
+      if (this._isInMultiSelection(cellId)) {
+        for (const id of this._selection) {
+          excludedCells.add(id);
+        }
+      }
+      return this._collectSnapRects(excludeKey, excludedCells);
+    };
     const getPageBox = (): IPageBox => this._pageBox();
     return {
       computeDrag: (rect: IRect) =>
@@ -616,7 +1014,7 @@ export class LayoutCanvas extends Widget {
 
   private _collectSnapRects(
     excludeKey: string,
-    excludeCellId?: string
+    excludeCellIds: ReadonlySet<string> = new Set()
   ): IRect[] {
     const rects: IRect[] = [];
     const nodes = this._page.querySelectorAll(
@@ -630,7 +1028,7 @@ export class LayoutCanvas extends Widget {
       if (key === excludeKey || cellId === '' || slot === '') {
         continue;
       }
-      if (excludeCellId && cellId === excludeCellId) {
+      if (excludeCellIds.has(cellId)) {
         continue;
       }
       rects.push({
@@ -671,12 +1069,12 @@ export class LayoutCanvas extends Widget {
    * into edit mode.
    */
   get activeCellId(): string | null {
-    return this._activeCellId;
+    return this._lastTouchedCellId;
   }
 
   consumeActiveCellId(): string | null {
-    const id = this._activeCellId;
-    this._activeCellId = null;
+    const id = this._lastTouchedCellId;
+    this._lastTouchedCellId = null;
     return id;
   }
 
@@ -693,11 +1091,12 @@ export class LayoutCanvas extends Widget {
     // Single-click on a different cell drops any group-link from the
     // previous cell — link must be re-established with another double
     // click on the new cell if the user wants group drag there.
+    // Selection state is updated separately by the canvas's capture-phase
+    // pointerdown listener; this method just owns z-index ordering.
     if (this._linkedCellId && this._linkedCellId !== cellId) {
       this._linkedCellId = null;
+      this._updatePinHighlight();
     }
-    this._activeCellId = cellId;
-    this._updatePinHighlight();
     const group = this._groups.get(cellId);
     if (!group) {
       return;
