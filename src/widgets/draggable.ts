@@ -102,6 +102,15 @@ export function enableDrag(
       options.onInteract?.();
       return;
     }
+    // Pointerdown inside an interactive ipywidget (slider, dropdown, the
+    // mpl_interactions canvas itself…) must reach the widget so the
+    // user can actually use it. JL's widgets manager wraps every widget
+    // view in a `.jupyter-widgets` element, so a closest()-walk is a
+    // reliable bypass.
+    if (target?.closest?.('.jupyter-widgets')) {
+      options.onInteract?.();
+      return;
+    }
     options.onInteract?.();
     dragging = true;
     activePointerId = e.pointerId;

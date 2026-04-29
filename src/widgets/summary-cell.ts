@@ -265,6 +265,7 @@ export class SummaryCellWidget {
         : undefined;
       const outputCell = new SummaryOutputCell(outLayout, items, {
         displayLabel: `${indexLabel}${slotLetter}`,
+        rendermime,
         callbacks: outputCallbacks
       });
       outputCell.node.dataset.cellId = id;
