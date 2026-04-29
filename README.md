@@ -13,13 +13,25 @@ A JupyterLab 4 extension that turns a notebook into a page-oriented summary view
 
 ## Install
 
-Requires JupyterLab 4.3+ and Python 3.10+.
+Requires JupyterLab 4.3+, Python 3.10+, and Node.js 18+ (needed at install time to build the labextension assets).
+
+PyPI publish is pending Windows COM support for the optional Excel feature. Until then, install directly from GitHub:
 
 ```bash
-pip install jupyterlab-cell-layout
+pip install "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.0"
 ```
 
-(For now this means installing from a clone — see [Development install](#development-install). PyPI publish is pending Windows COM support for the optional Excel feature.)
+Pin to a release tag (as above) for reproducibility, or omit `@v1.3.0` to track `main`. The `pip install` step triggers the TypeScript / webpack build via `hatch-jupyter-builder`, so Node.js must be on `PATH`.
+
+To update an existing install to a newer release:
+
+```bash
+pip install --upgrade --force-reinstall --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.0"
+```
+
+`--force-reinstall --no-deps` ensures the labextension assets are rebuilt without re-resolving JupyterLab itself. Restart JupyterLab afterwards.
+
+For a hackable checkout, see [Development install](#development-install) below.
 
 After installing, launch JupyterLab and open any notebook. A toolbar group (mode toggle, orientation, page count, export PDF) appears at the right of the notebook toolbar.
 
