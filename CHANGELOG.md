@@ -2,6 +2,16 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## 1.3.0 — 2026-04-30
+
+Live ipywidgets rendering in summary view. mpl_interactions sliders, plotly charts, vega-lite plots, and any other rich mime type the JupyterLab renderer registry can handle now render as their proper interactive views in summary mode — not as static fallback images.
+
+- **Live widget output.** `SummaryOutputCell` hands unhandled mime types off to JL's `IRenderMimeRegistry`. A dedicated `application/vnd.jupyter.widget-view+json` branch runs first so the live widget wins over the `image/png` static fallback that ipywidgets bundles alongside. The summary view and the notebook content view share the same kernel-side widget model via the comm channel — move a slider in either view and the other updates in lockstep.
+- **Drag bypass for widget controls.** Pointerdown on any `.jupyter-widgets` element passes through to the widget rather than starting a cell drag, so sliders, dropdowns, and the ipympl figure canvas all work as expected. Drag still initiates from anywhere outside widget controls (cell label, drag-grip, empty cell area).
+- **Auto-fit for asynchronous content.** Widgets render asynchronously after the kernel-side state arrives over the comm channel. A ResizeObserver on the slot body watches for the natural content size to settle, then resizes the slot once (capped at the same MAX_AUTO_FIT bounds as image auto-fit) and locks `auto_fit` off so the user can hand-resize from there.
+
+Known limitation: every output of a single cell still goes into one slot (slot A for text, slot B for graphics). A cell with multiple `display()` calls — e.g. `mpl_interactions` producing figure + sliders + plumbing widget — stacks all three inside slot B, draggable as a unit. Splitting them into per-`display()` slots would need a schema extension; deferred for now.
+
 ## 1.2.0 — 2026-04-30
 
 PDF cover sheet with optional table of contents, plus multi-cell selection and group operations.
