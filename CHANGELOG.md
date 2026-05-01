@@ -2,6 +2,13 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## 1.4.0 — 2026-05-02
+
+Configurable page margin with smart-guide snap.
+
+- **Page margin setting.** New `pageMargin` setting (0–80 mm, default 10) draws a faint dashed inner rectangle on each summary-mode page. Per-notebook value lives in `notebook.metadata.cell_layout.settings.page_margin`; the JL global default seeds new notebooks. Margin boxes are cosmetic on the canvas and hidden during PDF export via the existing `.jp-CellLayout-exporting` rule.
+- **Smart-guide snap to margin.** When smart guides are on, the four margin edges of the active page join the snap-target set alongside cell edges/centres and page edges/centres (2 mm tolerance, soft snap — cells can be pulled through the margin). Defensive guard suppresses margin candidates when `margin*2 ≥ page width/height`, so a malformed margin can't invert the inner box. 5 new alignment-guide tests + 6 new metadata-normalize tests; 189 Jest tests pass overall.
+
 ## 1.3.1 — 2026-05-01
 
 Edge auto-scroll while dragging cells in summary view.

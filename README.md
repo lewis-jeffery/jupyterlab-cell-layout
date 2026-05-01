@@ -18,15 +18,15 @@ Requires JupyterLab 4.3+, Python 3.10+, and Node.js 18+ (needed at install time 
 PyPI publish is in progress; until then, install directly from GitHub:
 
 ```bash
-pip install "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.1"
+pip install "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.4.0"
 ```
 
-Pin to a release tag (as above) for reproducibility, or omit `@v1.3.1` to track `main`. The `pip install` step triggers the TypeScript / webpack build via `hatch-jupyter-builder`, so Node.js must be on `PATH`.
+Pin to a release tag (as above) for reproducibility, or omit `@v1.4.0` to track `main`. The `pip install` step triggers the TypeScript / webpack build via `hatch-jupyter-builder`, so Node.js must be on `PATH`.
 
 To upgrade an existing install:
 
 ```bash
-pip install --upgrade --force-reinstall --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.1"
+pip install --upgrade --force-reinstall --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.4.0"
 ```
 
 `--force-reinstall --no-deps` ensures the labextension assets are rebuilt without re-resolving JupyterLab itself. Restart JupyterLab afterwards. Open any notebook — a toolbar group (mode toggle, orientation, page count, export PDF) appears at the right of the notebook toolbar.
@@ -40,7 +40,7 @@ If you previously ran `./install.sh` (an editable install) and now want to switc
 ```bash
 # from a checkout of this repo:
 ./scripts/clean-install.sh
-pip install --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.1"
+pip install --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.4.0"
 
 # or, without a checkout, run the equivalent inline:
 pip uninstall -y jupyterlab_cell_layout
@@ -53,7 +53,7 @@ for base in jupyter_path():
     if p.is_symlink(): p.unlink()
     elif p.exists(): shutil.rmtree(p, ignore_errors=True)
 "
-pip install --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.1"
+pip install --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.4.0"
 ```
 
 ## Quick tour
