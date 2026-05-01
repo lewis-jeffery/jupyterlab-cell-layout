@@ -176,7 +176,8 @@ export class SummaryCellWidget {
             getGridSnapMm,
             onInteract,
             snapHandler: snapHandlerFactory?.(id, 'input') ?? undefined,
-            getSiblings: getInputSiblings
+            getSiblings: getInputSiblings,
+            requestMorePageSpace: () => coordinator.growPagesByOne()
           }
         : undefined;
       this._main = new SummaryExcelCell(layout.input, {
@@ -209,7 +210,8 @@ export class SummaryCellWidget {
           onAutoFit: (size: { width: number; height: number }) =>
             coordinator.updateInputLayout(id, { size, auto_fit: false }),
           snapHandler: snapHandlerFactory?.(id, 'input') ?? undefined,
-          getSiblings: getInputSiblings
+          getSiblings: getInputSiblings,
+          requestMorePageSpace: () => coordinator.growPagesByOne()
         }
       : undefined;
     const onRunCell = options.onRunCell;
@@ -260,7 +262,8 @@ export class SummaryCellWidget {
                 auto_fit: false
               }),
             snapHandler: snapHandlerFactory?.(id, slotId) ?? undefined,
-            getSiblings: () => getOutputSiblings(slotId)
+            getSiblings: () => getOutputSiblings(slotId),
+            requestMorePageSpace: () => coordinator.growPagesByOne()
           }
         : undefined;
       const outputCell = new SummaryOutputCell(outLayout, items, {

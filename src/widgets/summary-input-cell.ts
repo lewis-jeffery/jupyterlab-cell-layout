@@ -48,6 +48,7 @@ export interface IInputLayoutCallbacks {
   onAutoFit?: (size: ISize) => void;
   snapHandler?: ISnapHandler;
   getSiblings?: () => IDragSibling[];
+  requestMorePageSpace?: () => boolean;
 }
 
 export interface IInputCellOptions {
@@ -130,7 +131,8 @@ export class SummaryInputCell extends Widget {
           getGridSnapMm: callbacks.getGridSnapMm,
           onInteract: callbacks.onInteract,
           snapHandler: callbacks.snapHandler,
-          getSiblings: callbacks.getSiblings
+          getSiblings: callbacks.getSiblings,
+          requestMorePageSpace: callbacks.requestMorePageSpace
         }
       );
       this._resizeCtl = enableResize(

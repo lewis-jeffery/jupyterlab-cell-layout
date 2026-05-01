@@ -30,6 +30,7 @@ export interface IExcelCellCallbacks {
   onInteract?: () => void;
   snapHandler?: ISnapHandler;
   getSiblings?: () => IDragSibling[];
+  requestMorePageSpace?: () => boolean;
 }
 
 export interface IExcelCellOptions {
@@ -78,7 +79,8 @@ export class SummaryExcelCell extends Widget {
           getGridSnapMm: callbacks.getGridSnapMm,
           onInteract: callbacks.onInteract,
           snapHandler: callbacks.snapHandler,
-          getSiblings: callbacks.getSiblings
+          getSiblings: callbacks.getSiblings,
+          requestMorePageSpace: callbacks.requestMorePageSpace
         }
       );
       this._resizeCtl = enableResize(

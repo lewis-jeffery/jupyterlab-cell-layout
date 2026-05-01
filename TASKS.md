@@ -1,6 +1,6 @@
 # JupyterLab Cell Layout — Task List
 
-_Last updated: 2026-04-30 (v1.3.0 shipped — live widget rendering for ipywidgets/mpl_interactions/plotly etc. P3 keyboard nav is the only remaining tracked item. Excel backlog closed.)_
+_Last updated: 2026-05-01 (edge auto-scroll during drag shipped — see P4 in Active track. v1.3.0 still the released tag; PyPI publish workstream still paused. Excel backlog closed.)_
 
 Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · ⏸ deferred · ❌ won't-do
 
@@ -22,6 +22,7 @@ Two threads run in this order: PDF cover sheet → Phase 4 polish (multi-select 
 - **P1** ✅ Multi-cell selection + group ops (was #41) — shipped 2026-04-30. Selection is a `Set<cellId>` on `LayoutCanvas`. Click a slot → selection = {that cell} (only when not already in selection, so multi-cell groups stay intact when you click a member). Shift-click → toggle membership; suppresses drag init in the same gesture. Drag on empty canvas → marquee (3 px movement threshold; semi-transparent blue rect; cells whose any slot overlaps the marquee become the new selection). Shift+drag-marquee → adds to selection. Single click on empty area without movement → clears selection (and link). Esc clears selection (and link). Multi-cell drag uses the existing `getSiblings` mechanism in `enableDrag` — every slot of every other selected cell is attached as a drag sibling, plus the dragged cell's own intra-cell siblings (input + outputs) when in selection (selection-of-1 still doesn't intra-group-drag, preserving the old pin behaviour). Snap-target collection excludes all selected cells during a multi-cell drag so distances aren't locked at start. Bulk ops via keyboard: Delete / Backspace removes the selection from the canvas (toggles inclusion off; `onInclusionChanged` callback syncs edit-mode eye toggles); Cmd/Ctrl+] brings selection to front preserving relative z-order; Cmd/Ctrl+[ sends to back, re-basing all z-indexes to 1+ in the process. F5 (pin) folded into selection; F7 (link, double-click) stays as a parallel single-cell quick-group concept.
 - **P2** ⏸ Layout templates — deferred 2026-04-30. User reviewed the design (browser download/upload, map-by-index, 3 starter templates) and concluded "not sure I'd use this much". Pushed past the next idea; revisit if usage patterns change. Original design: save layout to `.cell-layout-template.json` (settings + per-cell-by-index); apply via file picker; ship 2–3 starter templates.
 - **P3** ⬜ Keyboard navigation parity: Tab/Shift+Tab through reading order; arrow nudge 1 mm (5 mm with Shift); Delete removes from canvas; Esc clears.
+- **P4** ✅ Edge auto-scroll during drag — shipped 2026-05-01. While dragging a cell (single or multi-select group), if the cursor enters within 50 px of the scroll container's top/bottom/left/right edge, the canvas auto-scrolls toward that edge at a velocity that ramps linearly from 0 (zone boundary) to ~14 px/frame (≈840 px/s, at the edge or past it). The dragged cell stays glued to the cursor through the scroll: `enableDrag` captures the scroll container's `scrollTop/Left` at drag-start and includes the live scroll delta in the cell's mm-position math, so a stationary cursor over a scrolling viewport still moves the cell. Three subtle fixes landed during the same session: (1) the scroll container's bounding rect can extend below the visible viewport when JL parents allow overflow off-screen, so edges are clipped to `[0, window.innerHeight]` / `[0, window.innerWidth]` — without this, top scroll worked but bottom didn't because `rect.bottom` sat off-screen and the cursor could never reach it; (2) page count is fixed during a drag, so a user dragging toward the bottom of a fully-visible canvas had nothing to scroll into — added `CellCoordinator.growPagesByOne()` (settings-only update; no full canvas refresh, drag stays alive) plus a throttled `requestMorePageSpace` callback plumbed through `IDragOptions` and the three cell-callback interfaces, wired in `summary-cell.ts` to grow the canvas while the cursor pins the bottom edge; (3) page-grow + scroll in the same rAF tick was hitting browser layout-deferral — `_page.style.height` got the new value but `scrollContainer.scrollHeight` hadn't reflowed before `scrollTop = beforeTop + vy` clamped against the stale max — added an explicit reflow (read `scrollContainer.scrollHeight`) followed by an in-frame retry, so the cell actually advances on the same tick the page is added rather than spending throttle budget on more page-grows. Files: `src/widgets/draggable.ts` (pure `computeAutoScrollVelocity` + rAF loop + viewport clipping + retry), `src/managers/cell-coordinator.ts` (`growPagesByOne`), `src/widgets/summary-{input,output,excel}-cell.ts` + `summary-cell.ts` (callback plumbing). 9 new Jest tests for the velocity helper; 178 total pass; build clean.
 - **W1** ✅ Live widget output rendering (mpl_interactions, ipywidgets, plotly, vega) — shipped in v1.3.0. Passes `IRenderMimeRegistry.createRenderer` for unhandled mime types in `SummaryOutputCell`, with a dedicated `tryRenderWidgetView` branch that runs first for `application/vnd.jupyter.widget-view+json` (preferred over the static `image/png` fallback ipywidgets bundles alongside). ResizeObserver-based auto-fit kicks in once async widget content settles, sized to MAX_AUTO_FIT_* caps. Widgets unsubscribe from comm channels on rebuild + dispose via tracked `_activeRenderers`. `draggable.ts` skips drag init for clicks landing on `.jupyter-widgets` elements so sliders, buttons, ipympl canvas all pass through to the widget. `OutputProcessor.GRAPHICS_MIMETYPES` already includes widget-view (no change). Files modified: `src/widgets/summary-output-cell.ts`, `src/widgets/summary-cell.ts`, `src/widgets/draggable.ts`. 169 tests pass; build clean. Verified end-to-end on a real `mpl_interactions` notebook — sliders render, slider movement updates the chart, both views (summary + edit) stay in sync via the shared comm. Multiple `display()` calls in one cell still stack inside slot B (one slot per cell pair, `output_a` text + `output_b` graphics); user evaluated splitting across cells (broken by cell-re-execution closure staleness) and a schema extension to N slots per cell, then chose to live with the stacking.
 
 ## ⏸ Considered but parked
@@ -72,6 +73,36 @@ Two threads run in this order: PDF cover sheet → Phase 4 polish (multi-select 
 - **F7** ✅ Double-click to link a cell for group drag.
 
 **Excel range view — shipped in v0.4.0:** #31 — read-only mirror of an open Excel named range via xlwings, with live sync (~1 s) and per-cell horizontal alignment passthrough. **Mac-only.** Editable-summary work (#42) supersedes the Excel-data path for the primary use case; remaining Excel backlog closed (see ❌ won't-do).
+
+## 📦 PyPI publish (paused 2026-04-30, mid-flow)
+
+Goal: get `jupyterlab-cell-layout` 1.3.0 onto PyPI. Name confirmed available (PyPI JSON API returns 404 for both `jupyterlab-cell-layout` and `jupyterlab_cell_layout`). TestPyPI account just created.
+
+**State on pause**
+
+- **Working tree**: README.md modified, not committed. Diff: install section rewritten for `pip install jupyterlab-cell-layout` (drops Node.js prerequisite + GitHub `git+` URL); Excel section status changed from "Mac-only beta — Windows COM required before PyPI publish" to "macOS only; Windows not currently supported"; Status block matches; test count bumped 153 → 169; five relative links (`CONTRIBUTING.md`, `CLAUDE.md`, `CHANGELOG.md`, `TASKS.md`, `LICENSE`) rewritten as absolute `https://github.com/lewis-jeffery/jupyterlab-cell-layout/blob/main/...` URLs so PyPI's landing page resolves them.
+- **Build artifacts**: `dist/jupyterlab_cell_layout-1.3.0-py3-none-any.whl` (549 KB) and `dist/jupyterlab_cell_layout-1.3.0.tar.gz` (560 KB), both freshly rebuilt against the updated README. `twine check` PASSED on both. Wheel ships labextension assets at `share/jupyter/labextensions/jupyterlab-cell-layout/` as expected.
+- **Tooling**: `build`, `twine` (6.2.0), `hatch` (1.16.5) installed in the active anaconda Python 3.13 env.
+- **Webpack warning** (cosmetic, ignore): `153.*.js` is 339 KB, exceeds webpack's 244 KB recommendation — that's the jspdf+html2canvas vendor chunk.
+
+**Resume from here**
+
+- **R1** ⬜ Verify TestPyPI account email + enable 2FA at https://test.pypi.org/manage/account/2fa/ (TestPyPI won't issue tokens without 2FA).
+- **R2** ⬜ Generate an account-scoped TestPyPI token at https://test.pypi.org/manage/account/token/. Copy immediately (shown once). Project-scoped option only appears after first upload.
+- **R3** ⬜ `twine upload --repository testpypi dist/*` (username `__token__`, password = the full token starting with `pypi-`). Either via `~/.pypirc`, env vars `TWINE_USERNAME`/`TWINE_PASSWORD`, or interactive prompt.
+- **R4** ⬜ Smoke-test from TestPyPI in a fresh venv: `pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ jupyterlab-cell-layout` → `jupyter labextension list` should show `jupyterlab-cell-layout v1.3.0 enabled OK`. (The `--extra-index-url` pulls JupyterLab itself from real PyPI; TestPyPI doesn't mirror it.)
+- **R5** ⬜ Once TestPyPI is happy: rotate to a project-scoped TestPyPI token, then create a real PyPI account, enable 2FA, generate an account-scoped token, `twine upload dist/*`. After first real upload, rotate to a project-scoped PyPI token.
+- **R6** ⬜ `git tag v1.3.0 && git push --tags` (no tags exist on the repo currently).
+- **R7** ⬜ Commit the README.md changes ("docs: README for PyPI landing page").
+- **R8** ⏸ (optional, later) Set up the Jupyter Releaser GH Actions flow that `RELEASE.md` already references — needs `release` environment, `APP_PRIVATE_KEY` secret, `APP_ID` repo variable, and trusted publishing on PyPI.
+- **R9** ⏸ (optional, later) conda-forge feedstock PR — usually picked up by a bot after first PyPI release.
+
+**Decisions already made**
+
+- README on PyPI advertises the macOS-only Excel feature as "macOS only; Windows not currently supported" — Windows COM was the old gate and is now closed (#35 won't-do).
+- Wheel ships prebuilt labextension; users do **not** need Node.js. (`pyproject.toml`'s `hatch-jupyter-builder` hook only fires at build time, not install time.)
+- Two-step token strategy: account-scoped for the first upload, then immediately rotate to project-scoped. Reduces blast radius if a token leaks.
+- TestPyPI before real PyPI. TestPyPI also expires uploads, so don't rely on it for archival.
 
 ## ❌ Won't-do (closed 2026-04-30)
 

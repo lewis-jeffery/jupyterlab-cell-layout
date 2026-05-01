@@ -410,6 +410,27 @@ export class CellCoordinator {
   }
 
   /**
+   * Append a single blank page at the end. Lighter-weight than `insertPageAt`:
+   * only emits `settingsChanged` (resizes the canvas), not `changed` (full
+   * widget rebuild). Safe to call mid-drag — the dragged cell widget keeps
+   * its DOM and pointer capture, while `_page.style.height` grows so the
+   * scroll container has new room to scroll into. Returns true if a page
+   * was added; false at `MAX_PAGE_COUNT`.
+   */
+  growPagesByOne(): boolean {
+    const layout = this.manager.read();
+    if (layout.settings.page_count >= MAX_PAGE_COUNT) {
+      return false;
+    }
+    this.manager.update(l => ({
+      ...l,
+      settings: { ...l.settings, page_count: l.settings.page_count + 1 }
+    }));
+    this._settingsChanged.emit();
+    return true;
+  }
+
+  /**
    * Insert a new blank page at index `idx` (0-based). Cells whose top edge
    * is at or below `idx * pageHeight` shift down by one pageHeight to make
    * room. Refuses if `page_count` is already at the cap.

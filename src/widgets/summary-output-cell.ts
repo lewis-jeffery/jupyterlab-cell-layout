@@ -28,6 +28,7 @@ export interface IOutputLayoutCallbacks {
   onAutoFit?: (size: ISize) => void;
   snapHandler?: ISnapHandler;
   getSiblings?: () => IDragSibling[];
+  requestMorePageSpace?: () => boolean;
 }
 
 export interface IOutputCellOptions {
@@ -105,7 +106,8 @@ export class SummaryOutputCell extends Widget {
           getGridSnapMm: callbacks.getGridSnapMm,
           onInteract: callbacks.onInteract,
           snapHandler: callbacks.snapHandler,
-          getSiblings: callbacks.getSiblings
+          getSiblings: callbacks.getSiblings,
+          requestMorePageSpace: callbacks.requestMorePageSpace
         }
       );
       this._resizeCtl = enableResize(
