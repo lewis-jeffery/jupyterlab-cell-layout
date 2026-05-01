@@ -46,6 +46,16 @@
   z-index: 50;
 }
 
+/* Faint dashed rectangle showing the inner page margin. Cosmetic — snap
+ * behaviour lives in alignment-guides.ts. Hidden during PDF export. */
+.jp-CellLayout-pageMargin {
+  position: absolute;
+  pointer-events: none;
+  border: 1px dashed var(--jp-border-color2, #bbb);
+  opacity: 0.5;
+  z-index: 10;
+}
+
 .jp-CellLayout-pageNumber {
   position: absolute;
   right: 6px;
@@ -108,6 +118,7 @@
 /* Hide editor chrome during PDF export so the rendered bitmap is clean.
  * Page-number badges intentionally stay visible — useful in the printed PDF. */
 .jp-CellLayout-exporting .jp-CellLayout-pageBreak,
+.jp-CellLayout-exporting .jp-CellLayout-pageMargin,
 .jp-CellLayout-exporting .jp-CellLayout-handle,
 .jp-CellLayout-exporting .jp-CellLayout-snapGuide {
   display: none !important;

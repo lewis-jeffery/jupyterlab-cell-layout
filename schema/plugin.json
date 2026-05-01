@@ -43,6 +43,14 @@
       "title": "Grid snap (mm)",
       "description": "Snap grid size in millimetres for cell drag/resize. Set to 0 to disable snapping."
     },
+    "pageMargin": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 80,
+      "default": 10,
+      "title": "Page margin (mm)",
+      "description": "Margin drawn inside each summary-mode page. Cells snap to the margin (when smart guides are on) but can be pushed through. Suppressed in PDF export. Per-notebook overrides are stored in notebook metadata."
+    },
     "showReadingOrderBadges": {
       "type": "boolean",
       "default": true,

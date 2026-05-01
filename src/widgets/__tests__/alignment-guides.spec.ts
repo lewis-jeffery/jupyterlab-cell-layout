@@ -124,6 +124,54 @@ describe('computeDragSnap', () => {
     expect(r.snapped).toEqual({ x: false, y: false });
     expect(r.rect).toEqual(moving);
   });
+
+  it('snaps to the left page margin when within tolerance', () => {
+    const box: IPageBox = { ...A4, margin: 10 };
+    // moving.x = 11 → 1 mm from inner-left margin at x=10
+    const moving: IRect = { x: 11, y: 50, width: 40, height: 30 };
+    const r = computeDragSnap(moving, [], box, TOL);
+    expect(r.snapped.x).toBe(true);
+    expect(r.rect.x).toBe(10);
+  });
+
+  it('snaps to the right page margin', () => {
+    const box: IPageBox = { ...A4, margin: 10 };
+    // page width 210, right margin at 200. moving.right = 199 → 1 mm short.
+    const moving: IRect = { x: 159, y: 50, width: 40, height: 30 };
+    const r = computeDragSnap(moving, [], box, TOL);
+    expect(r.snapped.x).toBe(true);
+    expect(r.rect.x).toBe(160);
+  });
+
+  it('snaps top edge to top page margin', () => {
+    const box: IPageBox = { ...A4, margin: 10 };
+    // moving.y = 11 → 1 mm from top margin at y=10 on page 0.
+    const moving: IRect = { x: 50, y: 11, width: 40, height: 30 };
+    const r = computeDragSnap(moving, [], box, TOL);
+    expect(r.snapped.y).toBe(true);
+    expect(r.rect.y).toBe(10);
+  });
+
+  it('does not snap to margin when margin is 0', () => {
+    const box: IPageBox = { ...A4, margin: 0 };
+    const moving: IRect = { x: 11, y: 50, width: 40, height: 30 };
+    const r = computeDragSnap(moving, [], box, TOL);
+    // page-edge at 0 is 11 mm away — outside tolerance — so no x snap
+    expect(r.snapped.x).toBe(false);
+    expect(r.rect.x).toBe(11);
+  });
+
+  it('does not snap to margin if margin is wider than half the page', () => {
+    // 120 mm margin on each side leaves a 30 mm-wide page interior with
+    // overlapping margin boxes; defensive guard suppresses the candidates.
+    const wide: IPageBox = { width: 210, height: 297, pageCount: 1, margin: 120 };
+    const moving: IRect = { x: 121, y: 50, width: 40, height: 30 };
+    const r = computeDragSnap(moving, [], wide, TOL);
+    // No page-margin candidate at x=120; nearest x candidate is page-edge at 0
+    // (121 mm away, outside tolerance) → no snap.
+    expect(r.snapped.x).toBe(false);
+    expect(r.rect.x).toBe(121);
+  });
 });
 
 describe('computeResizeSnap', () => {

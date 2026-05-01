@@ -806,7 +806,8 @@ export class LayoutCanvas extends Widget {
       grid_snap: 0,
       default_summary_lines: 3,
       notebook_mode: 'edit',
-      smart_guides: false
+      smart_guides: false,
+      page_margin: 0
     });
     const sources: ITocSourceCell[] = [];
     for (const entry of this.coordinator.list()) {
@@ -1008,7 +1009,8 @@ export class LayoutCanvas extends Widget {
     return {
       width: bounds.width,
       height: bounds.height,
-      pageCount: settings.page_count
+      pageCount: settings.page_count,
+      margin: settings.smart_guides ? settings.page_margin : 0
     };
   }
 
@@ -1120,6 +1122,7 @@ export class LayoutCanvas extends Widget {
     page_size: PageSize;
     orientation: PageOrientation;
     page_count: number;
+    page_margin: number;
   }): void {
     this._currentPageSize = settings.page_size;
     this._currentOrientation = settings.orientation;
@@ -1130,7 +1133,8 @@ export class LayoutCanvas extends Widget {
       grid_snap: 0,
       default_summary_lines: 3,
       notebook_mode: 'edit',
-      smart_guides: false
+      smart_guides: false,
+      page_margin: 0
     });
     const pageCount = Math.max(1, Math.floor(settings.page_count));
     const pageHeightPx = mmToPx(bounds.height);
@@ -1141,6 +1145,12 @@ export class LayoutCanvas extends Widget {
     this._page.dataset.orientation = settings.orientation;
     this._page.dataset.pageCount = String(pageCount);
     this._renderPageBreaks(pageCount, widthPx, pageHeightPx);
+    this._renderPageMargins(
+      pageCount,
+      widthPx,
+      pageHeightPx,
+      settings.page_margin
+    );
   }
 
   private _renderPageBreaks(
@@ -1173,6 +1183,43 @@ export class LayoutCanvas extends Widget {
         brk.style.height = `${PAGE_BREAK_HEIGHT_PX}px`;
         this._page.appendChild(brk);
       }
+    }
+  }
+
+  /**
+   * Draw a faint dashed rectangle inside each page representing the page
+   * margin. Cosmetic only — actual snap behaviour lives in alignment-guides
+   * via the `margin` field on `IPageBox`. Hidden during PDF export by the
+   * `.jp-CellLayout-exporting` CSS rule.
+   */
+  private _renderPageMargins(
+    count: number,
+    widthPx: number,
+    pageHeightPx: number,
+    marginMm: number
+  ): void {
+    for (const el of Array.from(
+      this._page.querySelectorAll('.jp-CellLayout-pageMargin')
+    )) {
+      el.remove();
+    }
+    if (!(marginMm > 0)) {
+      return;
+    }
+    const marginPx = mmToPx(marginMm);
+    const innerWidth = widthPx - marginPx * 2;
+    const innerHeight = pageHeightPx - marginPx * 2;
+    if (innerWidth <= 0 || innerHeight <= 0) {
+      return;
+    }
+    for (let i = 0; i < count; i++) {
+      const box = document.createElement('div');
+      box.className = 'jp-CellLayout-pageMargin';
+      box.style.left = `${marginPx}px`;
+      box.style.top = `${pageHeightPx * i + marginPx}px`;
+      box.style.width = `${innerWidth}px`;
+      box.style.height = `${innerHeight}px`;
+      this._page.appendChild(box);
     }
   }
 

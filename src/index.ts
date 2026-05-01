@@ -67,12 +67,14 @@ interface IUserDefaults {
   pageSize: PageSize;
   orientation: PageOrientation;
   smartGuides: boolean;
+  pageMargin: number;
 }
 
 const userDefaults: IUserDefaults = {
   pageSize: 'A4',
   orientation: 'portrait',
-  smartGuides: true
+  smartGuides: true,
+  pageMargin: 10
 };
 
 // Session-scoped: the on-screen ToC is shown/hidden via the toolbar
@@ -791,7 +793,8 @@ function seedDefaultsIfEmpty(panel: NotebookPanel, manager: MetadataManager): vo
       ...layout.settings,
       page_size: userDefaults.pageSize,
       orientation: userDefaults.orientation,
-      smart_guides: userDefaults.smartGuides
+      smart_guides: userDefaults.smartGuides,
+      page_margin: userDefaults.pageMargin
     }
   }));
 }
@@ -927,6 +930,7 @@ function readUserDefaults(settings: ISettingRegistryType.ISettings): void {
   const pageSize = composite.pageSize;
   const orientation = composite.orientation;
   const smartGuides = composite.smartGuides;
+  const pageMargin = composite.pageMargin;
   if (pageSize === 'A3' || pageSize === 'A4') {
     userDefaults.pageSize = pageSize;
   }
@@ -935,6 +939,14 @@ function readUserDefaults(settings: ISettingRegistryType.ISettings): void {
   }
   if (typeof smartGuides === 'boolean') {
     userDefaults.smartGuides = smartGuides;
+  }
+  if (
+    typeof pageMargin === 'number' &&
+    Number.isFinite(pageMargin) &&
+    pageMargin >= 0 &&
+    pageMargin <= 80
+  ) {
+    userDefaults.pageMargin = pageMargin;
   }
 }
 

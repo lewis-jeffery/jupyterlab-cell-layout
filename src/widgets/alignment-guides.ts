@@ -11,6 +11,13 @@ export interface IPageBox {
   width: number;
   height: number;
   pageCount: number;
+  /**
+   * Inner page margin in mm. When > 0, the four margin edges of the active
+   * page are added to the snap-target set so cells can align to the margin.
+   * Pure soft-snap — the margin doesn't clamp the rect's position; users
+   * can pull through it.
+   */
+  margin?: number;
 }
 
 export type GuideAxis = 'x' | 'y';
@@ -81,6 +88,16 @@ function collectXCandidates(
   out.push({ value: 0, guideStart: top, guideEnd: bot, kind: 'edge' });
   out.push({ value: pageBox.width, guideStart: top, guideEnd: bot, kind: 'edge' });
   out.push({ value: pageBox.width / 2, guideStart: top, guideEnd: bot, kind: 'centre' });
+  const margin = pageBox.margin ?? 0;
+  if (margin > 0 && margin * 2 < pageBox.width) {
+    out.push({ value: margin, guideStart: top, guideEnd: bot, kind: 'edge' });
+    out.push({
+      value: pageBox.width - margin,
+      guideStart: top,
+      guideEnd: bot,
+      kind: 'edge'
+    });
+  }
   return out;
 }
 
@@ -115,6 +132,21 @@ function collectYCandidates(
     guideEnd: pageBox.width,
     kind: 'centre'
   });
+  const margin = pageBox.margin ?? 0;
+  if (margin > 0 && margin * 2 < pageBox.height) {
+    out.push({
+      value: top + margin,
+      guideStart: 0,
+      guideEnd: pageBox.width,
+      kind: 'edge'
+    });
+    out.push({
+      value: bot - margin,
+      guideStart: 0,
+      guideEnd: pageBox.width,
+      kind: 'edge'
+    });
+  }
   return out;
 }
 

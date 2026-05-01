@@ -23,6 +23,9 @@ export const DEFAULT_GRID_SNAP_MM = 5;
 export const DEFAULT_SUMMARY_LINES = 3;
 export const DEFAULT_SMART_GUIDES = true;
 export const SMART_GUIDES_TOLERANCE_MM = 2;
+export const DEFAULT_PAGE_MARGIN_MM = 10;
+// Cap at half the smaller A4 dimension so the inner box never inverts.
+export const MAX_PAGE_MARGIN_MM = 80;
 
 export interface IPosition {
   x: number;
@@ -76,6 +79,7 @@ export interface ILayoutSettings {
   default_summary_lines: number;
   notebook_mode: NotebookMode;
   smart_guides: boolean;
+  page_margin: number;
 }
 
 export const DEFAULT_PAGE_COUNT = 1;
@@ -96,7 +100,8 @@ export function defaultSettings(): ILayoutSettings {
     grid_snap: DEFAULT_GRID_SNAP_MM,
     default_summary_lines: DEFAULT_SUMMARY_LINES,
     notebook_mode: 'edit',
-    smart_guides: DEFAULT_SMART_GUIDES
+    smart_guides: DEFAULT_SMART_GUIDES,
+    page_margin: DEFAULT_PAGE_MARGIN_MM
   };
 }
 
@@ -320,6 +325,12 @@ export function normalizeSettings(raw: unknown): ILayoutSettings {
     typeof raw.smart_guides === 'boolean'
       ? raw.smart_guides
       : fallback.smart_guides;
+  const page_margin =
+    typeof raw.page_margin === 'number' &&
+    Number.isFinite(raw.page_margin) &&
+    raw.page_margin >= 0
+      ? Math.min(MAX_PAGE_MARGIN_MM, raw.page_margin)
+      : fallback.page_margin;
   return {
     page_size,
     orientation,
@@ -327,7 +338,8 @@ export function normalizeSettings(raw: unknown): ILayoutSettings {
     grid_snap,
     default_summary_lines,
     notebook_mode,
-    smart_guides
+    smart_guides,
+    page_margin
   };
 }
 

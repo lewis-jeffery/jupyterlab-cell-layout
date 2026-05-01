@@ -1,7 +1,9 @@
 import {
   DEFAULT_GRID_SNAP_MM,
+  DEFAULT_PAGE_MARGIN_MM,
   DEFAULT_SUMMARY_LINES,
   LAYOUT_SCHEMA_VERSION,
+  MAX_PAGE_MARGIN_MM,
   PAGE_SIZES_MM,
   defaultCellLayout,
   defaultNotebookLayout,
@@ -131,6 +133,36 @@ describe('normalizeSettings', () => {
   it('rejects non-positive default_summary_lines', () => {
     expect(normalizeSettings({ default_summary_lines: 0 }).default_summary_lines).toBe(
       DEFAULT_SUMMARY_LINES
+    );
+  });
+
+  it('defaults page_margin to DEFAULT_PAGE_MARGIN_MM', () => {
+    expect(normalizeSettings({}).page_margin).toBe(DEFAULT_PAGE_MARGIN_MM);
+  });
+
+  it('accepts a numeric page_margin', () => {
+    expect(normalizeSettings({ page_margin: 15 }).page_margin).toBe(15);
+  });
+
+  it('accepts zero page_margin', () => {
+    expect(normalizeSettings({ page_margin: 0 }).page_margin).toBe(0);
+  });
+
+  it('rejects negative page_margin', () => {
+    expect(normalizeSettings({ page_margin: -5 }).page_margin).toBe(
+      DEFAULT_PAGE_MARGIN_MM
+    );
+  });
+
+  it('rejects non-numeric page_margin', () => {
+    expect(normalizeSettings({ page_margin: 'wide' }).page_margin).toBe(
+      DEFAULT_PAGE_MARGIN_MM
+    );
+  });
+
+  it('clamps page_margin to MAX_PAGE_MARGIN_MM', () => {
+    expect(normalizeSettings({ page_margin: 500 }).page_margin).toBe(
+      MAX_PAGE_MARGIN_MM
     );
   });
 });

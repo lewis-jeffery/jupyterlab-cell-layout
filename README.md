@@ -15,21 +15,21 @@ A JupyterLab 4 extension that turns a notebook into a page-oriented summary view
 
 Requires JupyterLab 4.3+, Python 3.10+, and Node.js 18+ (needed at install time to build the labextension assets).
 
-PyPI publish is pending Windows COM support for the optional Excel feature. Until then, install directly from GitHub:
+PyPI publish is in progress; until then, install directly from GitHub:
 
 ```bash
-pip install "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.0"
+pip install "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.1"
 ```
 
-Pin to a release tag (as above) for reproducibility, or omit `@v1.3.0` to track `main`. The `pip install` step triggers the TypeScript / webpack build via `hatch-jupyter-builder`, so Node.js must be on `PATH`.
+Pin to a release tag (as above) for reproducibility, or omit `@v1.3.1` to track `main`. The `pip install` step triggers the TypeScript / webpack build via `hatch-jupyter-builder`, so Node.js must be on `PATH`.
 
-To update an existing install to a newer release:
+To upgrade an existing install:
 
 ```bash
-pip install --upgrade --force-reinstall --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.0"
+pip install --upgrade --force-reinstall --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.1"
 ```
 
-`--force-reinstall --no-deps` ensures the labextension assets are rebuilt without re-resolving JupyterLab itself. Restart JupyterLab afterwards.
+`--force-reinstall --no-deps` ensures the labextension assets are rebuilt without re-resolving JupyterLab itself. Restart JupyterLab afterwards. Open any notebook — a toolbar group (mode toggle, orientation, page count, export PDF) appears at the right of the notebook toolbar.
 
 For a hackable checkout, see [Development install](#development-install) below.
 
@@ -40,7 +40,7 @@ If you previously ran `./install.sh` (an editable install) and now want to switc
 ```bash
 # from a checkout of this repo:
 ./scripts/clean-install.sh
-pip install --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.0"
+pip install --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.1"
 
 # or, without a checkout, run the equivalent inline:
 pip uninstall -y jupyterlab_cell_layout
@@ -53,10 +53,8 @@ for base in jupyter_path():
     if p.is_symlink(): p.unlink()
     elif p.exists(): shutil.rmtree(p, ignore_errors=True)
 "
-pip install --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.0"
+pip install --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.1"
 ```
-
-After installing, launch JupyterLab and open any notebook. A toolbar group (mode toggle, orientation, page count, export PDF) appears at the right of the notebook toolbar.
 
 ## Quick tour
 
@@ -99,7 +97,7 @@ These are global defaults seeded into a brand-new notebook's metadata. Existing 
 
 A summary cell can mirror a named range from an open Excel workbook. Useful when the source-of-truth lives in Excel and you want it on the page next to your code-driven results.
 
-**Status:** Mac-only beta (xlwings via AppleScript). Windows COM support is required before PyPI publish — until then, install from source if you need this feature.
+**Status:** macOS only (xlwings via AppleScript). Windows is not currently supported.
 
 Install xlwings into the same Python environment as your kernel:
 
@@ -140,12 +138,12 @@ jupyter lab          # terminal 2
 ### Tests
 
 ```bash
-jlpm test            # Jest unit tests (153 currently)
+jlpm test            # Jest unit tests (189 currently)
 ```
 
 Playwright integration tests live in `ui-tests/`. One acceptance test reliably passes; the rest are blocked on an upstream Galata path-handling issue when programmatically creating notebooks.
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full dev loop and [CLAUDE.md](./CLAUDE.md) for the technical specification.
+See [CONTRIBUTING.md](https://github.com/lewis-jeffery/jupyterlab-cell-layout/blob/main/CONTRIBUTING.md) for the full dev loop and [CLAUDE.md](https://github.com/lewis-jeffery/jupyterlab-cell-layout/blob/main/CLAUDE.md) for the technical specification.
 
 ## Status
 
@@ -154,10 +152,10 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full dev loop and [CLAUDE.md](.
 - **Phase 3** (multi-page canvas + searchable PDF export with link annotations) — ✅ delivered
 - **Phase 4** (templates, bulk operations, full keyboard navigation) — partial; smart guides shipped, rest deferred
 - **Editable summary mode** — ✅ delivered (v0.5.0)
-- **Excel range view** — ✅ Mac (read-only with live sync); Windows COM is pre-PyPI-publish work
+- **Excel range view** — ✅ macOS (read-only with live sync); Windows not supported
 
-153 Jest unit tests passing. See [CHANGELOG.md](./CHANGELOG.md) for release history and [TASKS.md](./TASKS.md) for the live roadmap.
+189 Jest unit tests passing. See [CHANGELOG.md](https://github.com/lewis-jeffery/jupyterlab-cell-layout/blob/main/CHANGELOG.md) for release history and [TASKS.md](https://github.com/lewis-jeffery/jupyterlab-cell-layout/blob/main/TASKS.md) for the live roadmap.
 
 ## License
 
-BSD-3-Clause. See [LICENSE](./LICENSE).
+BSD-3-Clause. See [LICENSE](https://github.com/lewis-jeffery/jupyterlab-cell-layout/blob/main/LICENSE).
