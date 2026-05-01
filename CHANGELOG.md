@@ -2,6 +2,14 @@
 
 <!-- <START NEW CHANGELOG ENTRY> -->
 
+## 1.3.1 — 2026-05-01
+
+Edge auto-scroll while dragging cells in summary view.
+
+- **Auto-scroll near canvas edges.** Drag a cell (single or multi-select group) within 50 px of the canvas viewport's top, bottom, left, or right edge and the canvas auto-scrolls toward that edge with a linear velocity ramp up to ~14 px/frame at the edge. The dragged cell stays glued to the cursor through the scroll: drag math now includes the live `scrollTop` / `scrollLeft` delta so a stationary cursor over a scrolling viewport still moves the cell.
+- **Auto-grow page count at the bottom edge.** When the cursor pins the bottom edge of a fully-visible canvas with no remaining scroll room, a throttled `requestMorePageSpace` callback grows the page count by one (settings-only update — no full canvas refresh, drag stays alive). Same-frame reflow + retry handles the layout-deferral case where `scrollTop` would otherwise clamp against a stale `scrollHeight`.
+- **Viewport edge clipping.** The scroll container's bounding rect can extend below the visible viewport when JL parents allow overflow off-screen; edges are now clipped to the window's visible region so bottom-edge scroll triggers reliably.
+
 ## 1.3.0 — 2026-04-30
 
 Live ipywidgets rendering in summary view. mpl_interactions sliders, plotly charts, vega-lite plots, and any other rich mime type the JupyterLab renderer registry can handle now render as their proper interactive views in summary mode — not as static fallback images.

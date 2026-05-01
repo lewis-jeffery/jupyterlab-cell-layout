@@ -1,6 +1,6 @@
 # JupyterLab Cell Layout — Task List
 
-_Last updated: 2026-05-01 (edge auto-scroll during drag shipped — see P4 in Active track. v1.3.0 still the released tag; PyPI publish workstream still paused. Excel backlog closed.)_
+_Last updated: 2026-05-01 (v1.3.1 shipped — edge auto-scroll during drag, see P4. PyPI publish workstream still paused. Excel backlog closed.)_
 
 Legend: ✅ completed · 🟢 in progress · ⬜ available · 🔒 blocked · ⏸ deferred · ❌ won't-do
 
