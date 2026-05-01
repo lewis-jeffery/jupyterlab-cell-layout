@@ -33,6 +33,29 @@ pip install --upgrade --force-reinstall --no-deps "git+https://github.com/lewis-
 
 For a hackable checkout, see [Development install](#development-install) below.
 
+### Upgrading from a development install
+
+If you previously ran `./install.sh` (an editable install) and now want to switch to a fresh release install, pip's uninstall step can fail with `OSError: [Errno 2] No such file or directory: .../share/jupyter/labextensions/jupyterlab-cell-layout/package.json` — the dev tree's labextension symlink has gone stale, pip can't follow its own RECORD, and the new install rolls back. Clean the prior state first:
+
+```bash
+# from a checkout of this repo:
+./scripts/clean-install.sh
+pip install --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.0"
+
+# or, without a checkout, run the equivalent inline:
+pip uninstall -y jupyterlab_cell_layout
+python3 -c "
+import shutil
+from pathlib import Path
+from jupyter_core.paths import jupyter_path
+for base in jupyter_path():
+    p = Path(base) / 'labextensions' / 'jupyterlab-cell-layout'
+    if p.is_symlink(): p.unlink()
+    elif p.exists(): shutil.rmtree(p, ignore_errors=True)
+"
+pip install --no-deps "git+https://github.com/lewis-jeffery/jupyterlab-cell-layout.git@v1.3.0"
+```
+
 After installing, launch JupyterLab and open any notebook. A toolbar group (mode toggle, orientation, page count, export PDF) appears at the right of the notebook toolbar.
 
 ## Quick tour
